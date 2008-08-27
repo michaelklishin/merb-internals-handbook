@@ -1,0 +1,268 @@
+h1. Rack machinery in Merb.
+
+Once bootloaders are all run, Merb starts Rack adapter and requests can be
+served from this very moment. Now it's time to have a look how Merb uses Rack
+under the covers to greatly simplify support for variety of pluggable
+middleware, web servers and multiple application layouts.
+
+
+h2. What is Rack?
+
+Rack README states that Rack is "a modular Ruby web server interface". Some say
+Rack is a Ruby webserver abstraction. It's heavily inspired by Python's WSGI
+(Web Server Gateway Interface) which is a
+"standard":http://www.python.org/dev/peps/pep-0333/ in Python world.
+
+
+h2. What? Web server interface?
+
+The rationale of WSGI can be summarized to one sentence from PEP333:
+
+"This wide variety of choices can be a problem for new Python users, because
+generally speaking, their choice of web framework will limit their choice of
+usable web servers, and vice versa.".
+
+In a post-Rails world there is a dozen of Ruby web frameworks and until Rack was
+created by Christian Neukirchen they all were doing duplicate work on web
+servers support and common operations. If your deployment environment runs web server X, you only could use
+frameworks that support X, and no others. Rack gives frameworks and web servers
+developers universal unified interface.
+
+
+h2. Get yourself familiar with roots.
+
+I'd highly recomment reading "original WSGI
+PEP":http://www.python.org/dev/peps/pep-0333 before you continue reading this
+chapter.
+
+
+h2. Rack applications.
+
+Framework side of specification is implemented by Rack applications. Rack
+application is any callable object (that responds to :call message) that takes
+Rack environment and returns an array of three elements:
+
+ * response status string
+ * hash of response headers
+ * response body object
+
+Response object *must* respond to each, so in Ruby 1.8 string is a valid
+response object and nil is not. This simple requirement means you can return an
+IO object that will stream data to the client.
+
+Rack environment is a hash of CGI-like headers. You can find details in
+"Rack specification":http://rack.rubyforge.org/doc/files/SPEC.html.
+
+
+h2. Middleware.
+
+In the middle, after client is connected to the server but before framework
+starts serving it there maybe be any number of components called "middleware".
+Merb comes with middleware for serving static files (good for development, in
+production, of course, consider using nginx or something similar), profiling and
+path prefixes handling.
+
+Middleware wraps a Rack application, does some work (profiles, sends notifications,
+tries to serve certain files without triggering the framework, etc) and calls the
+application if necessary. You can think of Rack middleware as of highly reusable
+filters that run outside of framework dispatch process.
+
+Frameworks like Django and Pylons use middleware for all sorts of stuff, from
+conditional get support to csrf attacks protected to session setup and finalization.
+
+
+h2. Adapters.
+
+Rack adapters connect web server intefaces with Merb Rack application that takes
+the environment and passes it to Merb dispatcher. Since different web servers
+have different APIs, Merb comes with a bunch of adapters: for Mongrel, Thin,
+Ebb, Thin with Thin-Turbo backend, Evented Mongrel, Swiftiplied Mongrel, FastCGI, CGI, Webrick.
+
+Here is how Thin adapter looks like:
+
+require "thin"
+
+module Merb
+  module Rack
+    class Thin
+      # start a Thin server on given host and port.
+
+      # ==== Parameters
+      # opts<Hash>:: Options for Thin (see below).
+      #
+      # ==== Options (opts)
+      # :host<String>:: The hostname that Thin should serve.
+      # :port<Fixnum>:: The port Thin should bind to.
+      # :socket<Fixnum>>:: The socket number that thin should bind to.
+      # :socket_file<String>>:: The socket file that thin should attach to.
+      # :app<String>>:: The application name.
+      def self.start(opts={})
+        Merb::Dispatcher.use_mutex = false
+        if opts[:socket] || opts[:socket_file]
+          socket = opts[:socket] || "0"
+          socket_file = opts[:socket_file] || "#{Merb.root}/log/merb.#{socket}.sock"
+          Merb.logger.warn!("Using Thin adapter with socket file #{socket_file}.")
+          server = ::Thin::Server.new(socket_file, opts[:app], opts)
+        else
+          Merb.logger.warn!("Using Thin adapter on host #{opts[:host]} and port #{opts[:port]}.")
+          if opts[:host].include?('/')
+            opts[:host] = "#{opts[:host]}-#{opts[:port]}"
+          end
+          server = ::Thin::Server.new(opts[:host], opts[:port].to_i, opts[:app], opts)
+        end
+        Merb::Server.change_privilege
+        ::Thin::Logging.silent = true
+        server.start
+      end
+    end
+  end
+end
+
+What this does is starts Thin using host/port or socket and passes it an instance of Merb Rack application
+that knows how to pass incoming requests to Merb dispatcher. Pretty simple.
+
+Here is Merb Rack application I referred to a number of times already:
+
+module Merb  
+  module Rack
+    class Application
+      def call(env) 
+        begin
+          controller = ::Merb::Dispatcher.handle(Merb::Request.new(env))
+        rescue Object => e
+          return [500, {Merb::Const::CONTENT_TYPE => "text/html"}, e.message + "<br/>" + e.backtrace.join("<br/>")]
+        end
+        Merb.logger.info "\n\n"
+        Merb.logger.flush
+
+        unless controller.headers[Merb::Const::DATE]
+          require "time"
+          controller.headers[Merb::Const::DATE] = Time.now.rfc2822.to_s
+        end
+        controller.rack_response
+      end
+
+      def deferred?(env)
+        path = env[Merb::Const::PATH_INFO] ? env[Merb::Const::PATH_INFO].chomp('/') : ""
+        if path =~ Merb.deferred_actions
+          Merb.logger.info! "Deferring Request: #{path}"
+          true
+        else
+          false
+        end        
+      end # deferred?(env)
+    end # Application
+  end # Rack
+end # Merb
+
+It has one addition over vanilla Rack application: deferred? method. This is used by event-driven servers
+(currently Thin and Ebb) to figure out that request should be deferred (run in a thread) instead of running
+it in main reactor loop. This allows event-driven servers handle long requests without blocking the event loop.
+
+Short cut from Thin::Connection source code:
+
+# +true+ if <tt>app.call</tt> will be called inside a thread.
+# You can set all requests as threaded setting <tt>Connection#threaded=true</tt>
+# or on a per-request case returning +true+ in <tt>app.deferred?</tt>.
+def threaded?
+  @threaded || (@app.respond_to?(:deferred?) && @app.deferred?(@request.env))
+end
+
+
+	 
+h2. Rackup.
+
+Rack has it's "own init" file often referred to as "rackup file". Conventional
+extension of this file is .ru, though you may use .rb or anything else, as long
+as it is a valid Ruby code.
+
+Rackup file maps URLs to middleware and applications, and constructed using
+special DSL implemented within a Rack::Builder class.
+
+Rack source code provides the following example of using Rack::Builder:
+
+app = Rack::Builder.new {
+  use Rack::CommonLogger
+  use Rack::ShowExceptions
+  map "/lobster" do
+    use Rack::Lint
+    run Rack::Lobster.new
+  end
+}
+
+It stacks two middleware components, Rack::CommonLogger and Rack::ShowExceptions,
+and maps URL /lobster to Rack::Lobster application (that shows and
+rotates lobster image).
+
+
+
+
+h1. Rack middleware examples.
+
+Rack middleware in Rack source repository is very much like Mongrel handlers
+but with unified application interface. You can use them as examples or in some
+certain situations in production applications.
+
+h2. Rack::URLMap.
+
+Rack::URLMap is an application from Rack suite that maps paths
+relative to the root of the server to application instances.
+When environment is passed in, paths are checked
+and application with longest matching path is called.
+
+h2. Rack::Deflater
+
+Rack::Deflater compresses body of the response. It runs after framework finished
+processing the request.
+
+h2. Merb::Rack::ConditionalGet
+
+A rip off of Django's conditional get WSGI middleware.
+
+
+h1. How Merb does the rackup.
+
+Remember Rackup bootloader from previous chapter? It looks like this:
+
+Merb::BootLoader::RackUpApplication (merb-core/lib/bootloader.rb):
+<pre>
+class Merb::BootLoader::RackUpApplication < Merb::BootLoader
+  # Setup the Merb Rack App or read a rackup file located at
+  # Merb::Config[:rackup] with the same syntax as the
+  # rackup tool that comes with rack. Automatically evals the file in
+  # the context of a Rack::Builder.new { } block. Allows for mounting
+  # additional apps or middleware.
+  def self.run
+    require 'rack'
+    if File.exists?(Merb.dir_for(:config) / "rack.rb")
+      Merb::Config[:rackup] ||= Merb.dir_for(:config) / "rack.rb"
+    end
+
+    if Merb::Config[:rackup]
+      rackup_code = File.read(Merb::Config[:rackup])
+      Merb::Config[:app] = eval("::Rack::Builder.new {( #{rackup_code}\n )}.to_app", TOPLEVEL_BINDING, Merb::Config[:rackup])
+    else
+      Merb::Config[:app] = ::Rack::Builder.new {
+         if prefix = ::Merb::Config[:path_prefix]
+           use Merb::Rack::PathPrefix, prefix
+         end
+         use Merb::Rack::Static, Merb.dir_for(:public)
+         run Merb::Rack::Application.new
+       }.to_app
+    end
+  end
+end
+</pre>
+
+What it does is setting up Rack applications cascade web server is going to use.
+Merb Rack application instance is stored in Merb::Config[:app].
+When bootloader is done, web server adapter is started: it listens to host and
+port, processes requests using middleware cascade that may (or may not) call Merb Rack application stored in Merb::Config[:app].
+
+API of web server adapters for Merb are actually very simple: they should have
+a class method start that takes a Hash of options. Options may vary from web
+server to web server but one of them is :app option: again, this is Merb Rack
+application.
+
+Most of the time end users do not implement their own middleware cascades and
+Merb uses default stack: path prefix and static files middleware.

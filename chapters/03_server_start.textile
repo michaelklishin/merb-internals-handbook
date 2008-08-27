@@ -1,0 +1,126 @@
+Right after that Merb.environment and Merb.root are initialized from Merb configuration,
+and accordingly to action specified on command like Merb instance is either killed or started.
+
+Merb.start can be found in lib/merb-core.rb in Merb Git repository.
+
+Merb.start (lib/merb-core.rb):
+<pre>
+# Startup Merb by setting up the Config and starting the server.
+# This is where Merb application environment and root path are set.
+#
+# ==== Parameters
+# argv<String, Hash>::
+#   The config arguments to start Merb with. Defaults to +ARGV+.
+def start(argv=ARGV)
+  if Hash === argv
+    Merb::Config.setup(argv)
+  else
+    Merb::Config.parse_args(argv)
+  end
+  Merb.environment = Merb::Config[:environment]
+  Merb.root = Merb::Config[:merb_root]
+  case Merb::Config[:action]
+  when :kill
+    Merb::Server.kill(Merb::Config[:port], 1)
+  when :kill_9
+    Merb::Server.kill(Merb::Config[:port], 9)
+  else
+    Merb::Server.start(Merb::Config[:port], Merb::Config[:cluster])
+  end
+end
+</pre>
+
+
+On server start Merb has to figure out whether server is running on given port(s), so
+it calculates pid file path, reads it and checks the process if it's alive.
+If not, Merb runs bootloader and starts Rack adapter. This pid file requirement
+means that if you set Merb port, daemonization options or pid file location in config file
+of your application, it would have no effect on application start.
+So you must specify port, daemonization option and pid file location from command
+line or in the startup script you may write instead of default merb executable.
+
+
+
+Merb::Server.start (lib/merb-core/server.rb):
+<pre>
+# Start a Merb server, in either foreground, daemonized or cluster mode.
+#
+# ==== Parameters
+# port<~to_i>::
+#   The port to which the first server instance should bind to.
+#   Subsequent server instances bind to the immediately following ports.
+# cluster<~to_i>::
+#   Number of servers to run in a cluster.
+#
+# ==== Alternatives
+# If cluster is left out, then one process will be started. This process
+# will be daemonized if Merb::Config[:daemonize] is true.
+def start(port, cluster=nil)
+  @port = port
+  @cluster = cluster
+  if @cluster
+    @port.to_i.upto(@port.to_i + @cluster.to_i-1) do |port|
+      pidfile = pid_file(port)
+      pid = IO.read(pidfile).chomp.to_i if File.exist?(pidfile)
+
+      unless alive?(port)
+        remove_pid_file(port)
+        puts "Starting merb server on port #{port}, pid file: #{pidfile} and process id is #{pid}" if Merb::Config[:verbose]
+        daemonize(port)
+      else
+        raise "Merb is already running: port is #{port}, pid file: #{pidfile}, process id is #{pid}"
+      end
+    end
+  elsif Merb::Config[:daemonize]
+    pidfile = pid_file(port)
+    pid = IO.read(pidfile).chomp.to_i if File.exist?(pidfile)
+
+    unless alive?(@port)
+      remove_pid_file(@port)
+      puts "Daemonizing..." if Merb::Config[:verbose]
+      daemonize(@port)
+    else
+      raise "Merb is already running: port is #{port}, pid file: #{pidfile}, process id is #{pid}"
+    end
+  else
+    trap('TERM') { exit }
+    trap('INT') { puts "\nExiting"; exit }
+    puts "Running bootloaders..." if Merb::Config[:verbose]
+    BootLoader.run
+    puts "Starting Rack adapter..." if Merb::Config[:verbose]
+    Merb.adapter.start(Merb::Config.to_hash)
+  end
+end
+</pre>
+
+Most of methods used here are simple. The most tricky thing is probably how daemonization works.
+Merb forks off and child process places itself into a new group,
+becoming a group leader thus detaches from tty.
+Then child process reopens stdin and stdout to /dev/null and starting trapping TERM signal.
+
+A couple of notes: child process chdirs to wherever Merb.root points to, pid file is removed on exit.
+
+Merb::Server#daemonize (lib/merb-core/server.rb):
+<pre>
+# ==== Parameters
+# port<~to_s>:: The port of the Merb process to daemonize.
+def daemonize(port)
+  puts "About to fork..." if Merb::Config[:verbose]
+  fork do
+    Process.setsid
+    exit if fork
+    File.umask 0000
+    STDIN.reopen "/dev/null"
+    STDOUT.reopen "/dev/null", "a"
+    STDERR.reopen STDOUT
+    trap("TERM") { exit }
+    Dir.chdir Merb::Config[:merb_root]
+    at_exit { remove_pid_file(port) }
+    Merb::Config[:port] = port
+    BootLoader.run
+    Merb.adapter.start(Merb::Config.to_hash)
+  end
+end
+</pre>
+
+In both daemon and foreground run scenarios bootloader is run.
