@@ -1,0 +1,195 @@
+h1. Request dispatch.
+
+Once Rack environment is passed into Merb Rack application, dispatch
+process is started.
+
+[Merb::Rack::Application#call]
+def call(env) 
+  begin
+    controller = ::Merb::Dispatcher.handle(Merb::Request.new(env))
+  rescue Object => e
+    return [500, {Merb::Const::CONTENT_TYPE => "text/html"}, e.message + "<br/>" + e.backtrace.join("<br/>")]
+  end
+  Merb.logger.info "\n\n"
+  Merb.logger.flush
+
+  unless controller.headers[Merb::Const::DATE]
+    require "time"
+    controller.headers[Merb::Const::DATE] = Time.now.rfc2822.to_s
+  end
+  controller.rack_response
+end
+
+As you can see, dispatch wraps Rack environment into Merb::Request and passes
+it to Merb::Dispatcher.handle. If Merb application does not set Date header
+as required by rfc2616, Rack application does it after request dispatch.
+
+At this point you probably want to know what Dispatcher#handle does. It used to
+do all the work itself but in Merb 0.9.5 release cycle it started to delegate to
+Merb::Request#handle.
+
+Here it is:
+
+[Merb::Request#handle]
+def handle
+  start = Time.now
+  Merb.logger.info "Started request handling: #{start.to_s}"
+
+  find_route!
+  return redirect if redirects?
+  
+  klass = controller
+  Merb.logger.debug("Routed to: #{params.inspect}")
+  
+  unless klass < Controller
+    raise NotFound, 
+      "Controller '#{klass}' not found.\n" \
+      "If Merb tries to find a controller for static files, " \
+      "you may need to check your Rackup file, see the Problems " \
+      "section at: http://wiki.merbivore.com/pages/rack-middleware"
+  end
+
+  if klass == Application
+    raise NotFound, "The 'Application' controller has no public actions"
+  end
+
+  controller = dispatch_action(klass, params[:action])
+  controller._benchmarks[:dispatch_time] = Time.now - start
+  Merb.logger.info controller._benchmarks.inspect
+  Merb.logger.flush
+  controller
+rescue Object => exception
+  dispatch_exception(exception)
+end
+
+Merb request asks router for a route that matches request conditions
+(path, host, user agent, etc: with Merb's deferred routes anything in Rack
+environment can be used as routing condition). If route is redirecting,
+redirect happens immediately without even dispatching the action.
+
+
+Action dispatch is started by Merb::Request#dispatch_action. It instantiates
+the controller, passes in the request itself and calls _dispatch on the controller
+synchronized with mutex if needed.
+
+[Merb::AbstractController#dispatch_action]
+def dispatch_action(klass, action, status=200)
+  # build controller
+  controller = klass.new(self, status)
+  if Dispatcher.use_mutex
+    @@mutex.synchronize { controller._dispatch(action) }
+  else
+    controller._dispatch(action)
+  end
+  controller
+end
+
+Merb has AbstractController that knows nothing about the web but
+knows how to process filters and look up templates
+Merb::Controller#_dispatch does benchmarking of action run time and
+calls parent's method:
+
+
+def _dispatch(action)
+  setup_session
+  self.action_name = action
+  
+  caught = catch(:halt) do
+    start = Time.now
+    result = _call_filters(_before_filters)
+    @_benchmarks[:before_filters_time] = Time.now - start if _before_filters
+    result
+  end
+
+  @body = case caught
+  when :filter_chain_completed  then _call_action(action_name)
+  when String                   then caught
+  when nil                      then _filters_halted
+  when Symbol                   then __send__(caught)
+  when Proc                     then caught.call(self)
+  else
+    raise ArgumentError, "Threw :halt, #{caught}. Expected String, nil, Symbol, Proc."
+  end
+  start = Time.now
+  _call_filters(_after_filters)
+  @_benchmarks[:after_filters_time] = Time.now - start if _after_filters
+  finalize_session
+  @body
+end
+
+This is AbstractController#_dispatch. It calls session setup, processes filters and
+finalizes session.
+
+Once before filters are run, AbstractController figures out if filter chain halted and
+does one of the following:
+
+* If it didn't, call the action.
+* If it did and result is a string, this string is sent to the client.
+* If it did and result is a symbol, it's send to self (controller instance).
+* If filter chain returns a Proc, it's called.
+
+As you may expect, controller then calls after filters and
+calls session finalization.
+Note that neither AbstractController, nor Merb::Controller has
+implementation of session setup/finalization, but session
+mixin included into Merb::Controller on framework boot
+provide implementation for specific back end, like cookies,
+database, memcached or something else.
+
+AbstractController#_call_action is very simple and can be overriden
+in subclasses:
+
+[Merb::AbstractController#_call_action]
+def _call_action(action)
+  send(action)
+end
+
+Now back to Merb::Dispatcher for a little bit. What if action raises an exception?
+As you can see in Merb::Request#handle code above, it's rescued and re-dispatched
+with dispatch_exception method:
+
+[Merb::Request#dispatch_exception]
+def dispatch_exception(exception)
+  Merb.logger.error(Merb.exception(exception))
+  self.exceptions = [exception]
+  
+  begin
+    e = exceptions.first
+    
+    if action_name = e.action_name
+      dispatch_action(Exceptions, action_name, e.class.status)
+    else
+      Merb::Dispatcher::DefaultException.new(self, e.class.status)._dispatch
+    end
+  rescue Object => dispatch_issue
+    if e.same?(dispatch_issue) || exceptions.size > 5
+      Merb::Dispatcher::DefaultException.new(self, e.class.status)._dispatch
+    else
+      Merb.logger.error("Dispatching #{e.class} raised another error.")
+      Merb.logger.error(Merb.exception(dispatch_issue))
+      
+      exceptions.unshift dispatch_issue
+      retry
+    end
+  end
+end
+
+Exception re-dispatch works like this:
+
+* Exception class name is snake_cased to find exception handler name.
+* Instance of Exceptions controller is created.
+* Action with exception handler name is dispatched on Exceptions controller.
+
+Exception re-dispatch is smart enough to handle exceptions raised by
+actions of Exceptions controller. In this case DefaultException controller
+is used to show a nice backtrace in the browser.
+
+Now back to Rack application. Last line of call method supposed to return
+a 3-tuple of status, headers and response body, and it does using
+Merb::Controller#rack_response method:
+
+
+[Merb::Controller#rack_response]
+def rack_response
+  [status, headers, body]
+end
