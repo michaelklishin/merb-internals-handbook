@@ -161,7 +161,9 @@ end # Merb
 
 It has one addition over vanilla Rack application: deferred? method. This is used by event-driven servers
 (currently Thin and Ebb) to figure out that request should be deferred (run in a thread) instead of running
-it in main reactor loop. This allows event-driven servers handle long requests without blocking the event loop.
+it in main reactor loop. This allows event-driven servers handle long requests without blocking
+the event loop (and thus take best of both worlds: better performance of even-driven
+servers for short requests in the even loop and threading for longer requests).
 
 Short cut from Thin::Connection source code:
 
