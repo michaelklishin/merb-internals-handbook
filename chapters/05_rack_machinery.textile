@@ -68,7 +68,7 @@ application if necessary. You can think of Rack middleware as of highly reusable
 filters that run outside of framework dispatch process.
 
 Frameworks like Django and Pylons use middleware for all sorts of stuff, from
-conditional get support to csrf attacks protected to session setup and finalization.
+conditional get support to csrf attacks protecttion to session setup and finalization.
 
 
 h2. Adapters.
