@@ -78,7 +78,11 @@ the environment and passes it to Merb dispatcher. Since different web servers
 have different APIs, Merb comes with a bunch of adapters: for Mongrel, Thin,
 Ebb, Thin with Thin-Turbo backend, Evented Mongrel, Swiftiplied Mongrel, FastCGI, CGI, Webrick.
 
-Here is how Thin adapter looks like:
+Adapter's responsibility is to start the web server using Merb application configuration
+(port, host, process user and group, etc) and call Merb Rack application when request
+comes in.
+
+Here is what Thin adapter looks like:
 
 require "thin"
 
