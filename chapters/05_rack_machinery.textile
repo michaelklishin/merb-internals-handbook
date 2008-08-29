@@ -185,7 +185,8 @@ Rack has it's "own init" file often referred to as "rackup file". Conventional
 extension of this file is .ru, though you may use .rb or anything else, as long
 as it is a valid Ruby code.
 
-Rackup file maps URLs to middleware and applications, and constructed using
+Rackup file sets up middleware stack: what middleware runs in what order.
+It usually maps URLs to middleware and applications, and constructed using
 special DSL implemented within a Rack::Builder class.
 
 Rack source code provides the following example of using Rack::Builder:
@@ -203,7 +204,8 @@ It stacks two middleware components, Rack::CommonLogger and Rack::ShowExceptions
 and maps URL /lobster to Rack::Lobster application (that shows and
 rotates lobster image).
 
-
+Keep in mind that Rack middleware run order matters just like filters order
+in Merb application does matter.
 
 
 h1. Rack middleware examples.
