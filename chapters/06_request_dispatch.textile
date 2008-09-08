@@ -1,5 +1,26 @@
 h1. Request dispatch.
 
+h2. Briefly.
+
+* Merb::Request is instantiated from Rack environment.
+* Merb Rack application runs Merb::Dispatcher.handle.
+* Handling is delegated to Merb::Request#handle.
+* Handler asks router for the route.
+* If route is redirecting, action is not dispatches and status/body are set.
+* If route is not redirecting, handler instantiates the controller from
+  request and route params.
+* Before filters are run.
+* Controller method is called (action is dispatched). This is the only step
+  that is processed with mutex lock (if it is used at all).
+* After filters are run.
+* Control returned to Merb Rack application.
+* Date header set by Merb Rack application unless it's been already set.
+* 3-tuple returned from Merb Rack application to web server.
+* Web server sends headers and the body to the client and (possibly)
+  closes the connection.
+
+
+h2. Details.
 Once Rack environment is passed into Merb Rack application, dispatch
 process is started.
 
@@ -21,12 +42,8 @@ def call(env)
 end
 
 As you can see, dispatch wraps Rack environment into Merb::Request and passes
-it to Merb::Dispatcher.handle. If Merb application does not set Date header
-as required by rfc2616, Rack application does it after request dispatch.
-
-At this point you probably want to know what Dispatcher#handle does. It used to
-do all the work itself but in Merb 0.9.5 release cycle it started to delegate to
-Merb::Request#handle.
+it to Merb::Dispatcher.handle. Dispatcher used to do all the work itself but in
+Merb 0.9.5 development cycle it started to delegate to Merb::Request#handle.
 
 Here it is:
 
@@ -62,15 +79,16 @@ rescue Object => exception
   dispatch_exception(exception)
 end
 
-Merb request asks router for a route that matches request conditions
+Handling method first asks router for a route that matches request conditions
 (path, host, user agent, etc: with Merb's deferred routes anything in Rack
 environment can be used as routing condition). If route is redirecting,
-redirect happens immediately without even dispatching the action.
+redirect happens immediately without even dispatching the action or running
+filters.
 
-
-Action dispatch is started by Merb::Request#dispatch_action. It instantiates
-the controller, passes in the request itself and calls _dispatch on the controller
-synchronized with mutex if needed.
+If route is not redirecting, action dispatch is started by
+Merb::Request#dispatch_action. It instantiates the controller, passes in
+the request itself and calls _dispatch on the controller synchronized
+with mutex if needed.
 
 [Merb::AbstractController#dispatch_action]
 def dispatch_action(klass, action, status=200)
@@ -89,7 +107,7 @@ knows how to process filters and look up templates
 Merb::Controller#_dispatch does benchmarking of action run time and
 calls parent's method:
 
-
+[Merb::Controller#_dispatch]
 def _dispatch(action)
   setup_session
   self.action_name = action
@@ -117,7 +135,7 @@ def _dispatch(action)
   @body
 end
 
-This is AbstractController#_dispatch. It calls session setup, processes filters and
+This is Merb::Controller#_dispatch. It calls session setup, processes filters and
 finalizes session.
 
 Once before filters are run, AbstractController figures out if filter chain halted and
@@ -184,7 +202,9 @@ Exception re-dispatch is smart enough to handle exceptions raised by
 actions of Exceptions controller. In this case DefaultException controller
 is used to show a nice backtrace in the browser.
 
-Now back to Rack application. Last line of call method supposed to return
+Now back to Rack application. If Merb application does not set Date header
+as required by rfc2616, Rack application does it after request dispatch.
+Last line of call method supposed to return
 a 3-tuple of status, headers and response body, and it does using
 Merb::Controller#rack_response method:
 
