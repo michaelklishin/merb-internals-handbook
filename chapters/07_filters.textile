@@ -5,8 +5,10 @@ Filters are provided by Merb::AbstractController. There are two
 types of filters, before and after filters, stored in arrays:
 
 [Merb::AbstractController]
+<pre><code>
 class_inheritable_accessor :_before_filters, :_after_filters
 self._before_filters, self._after_filters = [], []
+</pre></code>
 
 So you can access filter lists directly if you really feel you need.
 Each filter is stored internally as a 2-tuple of symbol/proc and options.
@@ -15,13 +17,17 @@ Options are normalized so it's possible to use both Symbols and Strings.
 Filters are added using before and after methods:
 
 [Merb::AbstractController.after]
-def self.after(filter = nil, opts = {}, &block)
+<pre><code>
+  def self.after(filter = nil, opts = {}, &block)
   add_filter(self._after_filters, filter || block, opts)
 end
+</pre></code>
 
 [Merb::AbstractController.before]
-def self.before(filter = nil, opts = {}, &block)
+<pre><code>
+  def self.before(filter = nil, opts = {}, &block)
   add_filter(self._before_filters, filter || block, opts)
 end
+</pre></code>
 
 As you can see, both of them delegate to add_filter.

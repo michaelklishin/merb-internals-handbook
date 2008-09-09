@@ -9,8 +9,9 @@ Merb Bootloader is any Ruby class object that responds to :run (in other words, 
 run). Here is an example of bootloader from Merb core that initializes Merb logger:
 
 Merb::BootLoader::Logger (lib/merb-core/bootloader.rb):
-<pre>
-# Set up the logger.
+
+<pre><code>
+  # Set up the logger.
 #
 # Place the logger inside of the Merb log directory (set up in
 # Merb::BootLoader::BuildFramework)
@@ -28,7 +29,7 @@ class Merb::BootLoader::Logger < Merb::BootLoader
     end
   end
 end
-</pre>
+</pre></code>
 
 Bootloaders in Merb are run in certain order which is very important. You cannot load classes unless
 framework layout is not set, you cannot do rackup unless you set up logger, and so on. So bootloaders
@@ -42,7 +43,8 @@ lies: bootloaders actually must inherit from Merb::Bootloader, but it's usually 
 Here is how it looks like in Merb core:
 
 Merb::Bootloader.inherited (lib/merb-core/bootloader.rb):
-<pre>
+
+<pre><code>
 # Adds the inheriting class to the list of subclasses in a position
 # specified by the before and after methods.
 #
@@ -52,7 +54,8 @@ def inherited(klass)
   subclasses << klass.to_s
   super
 end
-</pre>
+</pre></code>
+
 
 All said in paragraph above means plugin developers can hook into framework boot
 process, for instance, to load ORM classes at the right moment, so no crazy monkeypatching or Dark Magic
@@ -62,8 +65,8 @@ Again, some code to make it 100% clear:
 
 Merb::Bootloader (lib/merb-core/bootloader.rb):
 
-<pre>
-# ==== Parameters
+<pre><code>
+  # ==== Parameters
 # klass<~to_s>::
 #   The boot loader class after which this boot loader should be run.
 #
@@ -98,13 +101,15 @@ def move_klass(klass, where)
     Merb::BootLoader.subclasses.insert(index + where, self.to_s)
   end
 end
-</pre>
+</pre></code>
+
 
 Here is a complete example of a bootloader from merb-slices:
 
 Merb::Slices::Loader (merb-more/merb-slices/lib/merb-slices.rb):
-<pre>
-  # Load Slice classes before the app's classes are loaded.
+
+<pre><code>
+    # Load Slice classes before the app's classes are loaded.
   #
   # This allows the application to override/merge any slice-level classes.
   class Merb::Slices::Loader < Merb::BootLoader
@@ -174,7 +179,7 @@ Merb::Slices::Loader (merb-more/merb-slices/lib/merb-slices.rb):
     end
 
   end
-</pre>
+</pre></code>
 
 This before class method call places Merb::Slices::Loader bootloader before Merb::BootLoader::LoadClasses.
 
@@ -185,7 +190,8 @@ Now once bootloaders chain is pretty much explained, let's have a look at each b
 Obviously logger has to be initialized early on so Merb::BootLoader::Logger is the first logger in the chain
 in merb-core. It uses logger-related parameters from Merb::Config:
 
-# Set up the logger.
+<pre><code>
+  # Set up the logger.
 #
 # Place the logger inside of the Merb log directory (set up in
 # Merb::BootLoader::BuildFramework)
@@ -203,10 +209,12 @@ class Merb::BootLoader::Logger < Merb::BootLoader
     end
   end
 end
+</pre></code>
 
 The Merb drops pid file if it's running daemonized or with several instances clustered:
 
-# Stores pid file.
+<pre><code>
+  # Stores pid file.
 #
 # Only run if daemonization or clustering options specified on start.
 # Port is taken from Merb::Config and must be already set at this point.
@@ -219,13 +227,15 @@ class Merb::BootLoader::DropPidFile <  Merb::BootLoader
     end
   end
 end
+</pre></code>
 
 This does nothing fancy, just creates directory where pid file is supposed to be stored and
 writes own process identifier into that file:
 
 Merb::Server.store_pid (lib/merb-core/server.rb):
-<pre>
-# Stores a PID file on the filesystem.
+
+<pre><code>
+  # Stores a PID file on the filesystem.
 # This uses :pid_file options from configuration when provided
 # or merb.<port>.pid in log directory by default.
 #
@@ -243,13 +253,14 @@ def store_pid(port)
   puts "Created directory, writing process id..." if Merb::Config[:verbose]
   File.open(pidfile, 'w'){ |f| f.write("#{Process.pid}") }
 end
-</pre>
+</pre></code>
 
 One unanswered question here is how path to pid file is calculated. Let's see:
 
 Merb::Server.store_pid (lib/merb-core/server.rb):
-<pre>
-# Gets the pid file for the specified port.
+
+<pre><code>
+  # Gets the pid file for the specified port.
 #
 # ==== Parameters
 # port<~to_s>::
@@ -295,7 +306,7 @@ def pid_files
     Dir[Merb.log_path / "merb.*.pid"]
   end
  end
-</pre>
+</pre></code>
 
 It's pretty straightforward. If pid_file option is set up startup from command like (because at this point
 in boot process config file is not loaded yet), it is used. If not, Merb uses port of the instance to
@@ -303,11 +314,12 @@ make pid file name unique and places it under log directory.
 
 Second method shows how pid files list is collected using range of ports Merb cluster uses.
 
-Next booloader sets up "some useful defaults" as docstring says:
+Next bootloader sets up "some useful defaults" as docstring says:
 
 Merb::Bootloader (lib/merb-core/bootloader.rb):
-<pre>
-# Setup some useful defaults
+
+<pre><code>
+  # Setup some useful defaults
 class Merb::BootLoader::Defaults < Merb::BootLoader
   def self.run
     Merb::Request.http_method_overrides.concat([
@@ -316,7 +328,8 @@ class Merb::BootLoader::Defaults < Merb::BootLoader
     ])
   end
 end
-</pre>
+</pre></code>
+
 
 FIXME: explain it.
 
@@ -344,8 +357,9 @@ use :mailer and :parts layout components.
 Source code of that bootloader is very simple:
 
 Merb::BootLoader::BuildFramework (lib/merb-core/bootloader.rb):
-<pre>
-# ==== Example
+
+<pre><code>
+  # ==== Example
 #   Merb::Config[:framework] = {
 #     :view   => Merb.root / "views",
 #     :model  => Merb.root / "models",
@@ -382,7 +396,7 @@ class Merb::BootLoader::BuildFramework < Merb::BootLoader
     end
   end
 end
-</pre>
+</pre></code>
 
 Default framework layout can be inferred from Merb::BootLoader.default_framework.
 
@@ -444,7 +458,7 @@ def push_path(type, path, file_glob = "**/*.rb")
 end
 </pre>
 
-Merb.dir_for is a reader for registred component paths.
+Merb.dir_for is a reader for registered component paths.
 
 Merb.dir_for (lib/merb-core.rb):
 <pre>
@@ -595,8 +609,8 @@ to be executed by Merb just before application classes are loaded. This is what
 this bootloader does: iterates over stored procs and calls them. You can use
 any callable object instead of block/lambda/Proc.
 
-It's a good way to do all kind of things befor app loads: from plugins configuration
-to confitional requires (in case env-specific init files do not satisfy your needs).
+It's a good way to do all kind of things before the app loads: from plugins configuration
+to conditional `requires` (in case env-specific init files would not satisfy your needs).
 
 Merb::BootLoader::BeforeAppLoads (lib/merb-core/bootloader.rb):
 <pre>
@@ -644,7 +658,7 @@ This particular bootloader is probably a subject of interest of people who
 really care to know the underpinnings, and source says much more than any words.
 So we move on.
 
-Merb::NootLoader::LoadClasses (lib/merb-core/bootloader.rb):
+Merb::BootLoader::LoadClasses (lib/merb-core/bootloader.rb):
 <pre>
 # Load all classes inside the load paths.
 #
@@ -1098,7 +1112,7 @@ uses default middleware bundled in merb-core.
 
 Merb::BootLoader::RackUpApplication (merb-core/lib/bootloader.rb):
 <pre>
-class Merb::BootLoader::RackUpApplication < Merb::BootLoader
+  class Merb::BootLoader::RackUpApplication < Merb::BootLoader
   # Setup the Merb Rack App or read a rackup file located at
   # Merb::Config[:rackup] with the same syntax as the
   # rackup tool that comes with rack. Automatically evals the file in

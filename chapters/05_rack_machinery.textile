@@ -84,6 +84,7 @@ comes in.
 
 Here is what Thin adapter looks like:
 
+<pre><code>
 require "thin"
 
 module Merb
@@ -121,13 +122,15 @@ module Merb
     end
   end
 end
+</pre></code>
 
 What this does is starts Thin using host/port or socket and passes it an instance of Merb Rack application
 that knows how to pass incoming requests to Merb dispatcher. Pretty simple.
 
 Here is Merb Rack application I referred to a number of times already:
 
-module Merb  
+<pre><code>
+  module Merb  
   module Rack
     class Application
       def call(env) 
@@ -158,6 +161,7 @@ module Merb
     end # Application
   end # Rack
 end # Merb
+</pre></code>
 
 It has one addition over vanilla Rack application: deferred? method. This is used by event-driven servers
 (currently Thin and Ebb) to figure out that request should be deferred (run in a thread) instead of running
@@ -167,12 +171,14 @@ servers for short requests in the even loop and threading for longer requests).
 
 Short cut from Thin::Connection source code:
 
+<pre><code>
 # +true+ if <tt>app.call</tt> will be called inside a thread.
 # You can set all requests as threaded setting <tt>Connection#threaded=true</tt>
 # or on a per-request case returning +true+ in <tt>app.deferred?</tt>.
 def threaded?
   @threaded || (@app.respond_to?(:deferred?) && @app.deferred?(@request.env))
 end
+</pre></code>
 
 And yes, this means web server authors should be aware of this feature since
 it goes beyong Rack specification, but at the time of writing (August 2008)
@@ -191,6 +197,7 @@ special DSL implemented within a Rack::Builder class.
 
 Rack source code provides the following example of using Rack::Builder:
 
+<pre><code>
 app = Rack::Builder.new {
   use Rack::CommonLogger
   use Rack::ShowExceptions
@@ -199,6 +206,7 @@ app = Rack::Builder.new {
     run Rack::Lobster.new
   end
 }
+</pre></code>
 
 It stacks two middleware components, Rack::CommonLogger and Rack::ShowExceptions,
 and maps URL /lobster to Rack::Lobster application (that shows and
@@ -236,8 +244,9 @@ h1. How Merb does the rackup.
 Remember Rackup bootloader from previous chapter? It looks like this:
 
 Merb::BootLoader::RackUpApplication (merb-core/lib/bootloader.rb):
-<pre>
-class Merb::BootLoader::RackUpApplication < Merb::BootLoader
+
+<pre><code>
+  class Merb::BootLoader::RackUpApplication < Merb::BootLoader
   # Setup the Merb Rack App or read a rackup file located at
   # Merb::Config[:rackup] with the same syntax as the
   # rackup tool that comes with rack. Automatically evals the file in
@@ -263,7 +272,8 @@ class Merb::BootLoader::RackUpApplication < Merb::BootLoader
     end
   end
 end
-</pre>
+</pre></code>
+
 
 What it does is setting up Rack applications stack web server is going to use.
 Merb Rack application instance is stored in Merb::Config[:app].
