@@ -5,8 +5,8 @@ objects known as bootloaders. Every bootloader in the chain has it's own purpose
 set up framework directories structure, some load classes, some inline templates. They
 all will be covered a bit later.
 
-Merb Bootloader is any Ruby class object that responds to :run (in other words, has class method
-run). Here is an example of bootloader from Merb core that initializes Merb logger:
+Merb Bootloader is any Ruby class that responds to :run.
+Here is an example of bootloader from Merb core that initializes Merb logger:
 
 Merb::BootLoader::Logger (lib/merb-core/bootloader.rb):
 
