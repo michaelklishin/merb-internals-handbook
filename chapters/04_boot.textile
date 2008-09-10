@@ -11,7 +11,7 @@ Here is an example of bootloader from Merb core that initializes Merb logger:
 Merb::BootLoader::Logger (lib/merb-core/bootloader.rb):
 
 <pre><code>
-  # Set up the logger.
+# Set up the logger.
 #
 # Place the logger inside of the Merb log directory (set up in
 # Merb::BootLoader::BuildFramework)
