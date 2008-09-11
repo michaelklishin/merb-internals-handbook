@@ -1,5 +1,5 @@
 Right after that Merb.environment and Merb.root are initialized from Merb configuration,
-and accordingly to action specified on command like Merb instance is either killed or started.
+and accordingly to action specified on command line Merb instance is either killed or started.
 
 Merb.start can be found in lib/merb-core.rb in Merb Git repository.
 
