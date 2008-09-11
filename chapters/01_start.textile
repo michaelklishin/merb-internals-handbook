@@ -5,45 +5,43 @@ how to use Merb. As occasional Merb contributor I always wanted a book that
 really saves my time when it comes to understanding how things work inside
 of the framework. So I decided to write this little book about Merb internals.
 
-== TOC
+== Foreword.
 
-* Goal.
-** Hacker's framework needs hacker's handbook.
+* Hacker's framework needs hacker's handbook.
 	 
-* What happens when you run merb executable.
-** Start.
-** Arguments parsing.
-** Server start.
-** Bootloaders overview.
-** Framework layout.
-** Dependencies and class reload.
-** Plugins.
-** Rackup.
-** Template inlining.
+== What happens when you run merb executable.
 
+* Start.
+* Arguments parsing.
+* Server start.
+* Framework boot.
 
-* Then request comes in.
+== Then request comes in.
 
-** Merb on Rack.
-** Router internals.
-** MIME formats and what's behind "provides API".
-** Rendering in Merb.
-** Sessions.
+* Merb on Rack.
+* Rackup.
+* Dispatch.
+* Template inlining.
+* Router internals.
+* MIME formats and what's behind "provides API".
+* Rendering in Merb.
+* Sessions.
+* Plugins.
 
-* Plugins architecture.
+== Plugins architecture.
 	 
 ** ORM plugins.
 ** Slices.
 ** Other plugins.
 
-* Development.
+== Development.
 
-** Overview.
-** Public and private specs.
-** Repository organization.
+* Overview.
+* Public and private specs.
+* Repository organization.
 
 
-== Goal
+== Foreword
 
 Knowing how tools you use work under the covers is a huge win for every
 developer out there and Merb is small and clean enough for everyone to
