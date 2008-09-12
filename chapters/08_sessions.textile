@@ -1,0 +1,1297 @@
+h2. Overview.
+
+Merb supports multiple session stores and lets plugin developers implement their own stores.
+Out of the box merb-core provides memory, cookie and memcached session stores. ORM plugins
+provide support for database stores: DataMapper, Sequel, ActiveRecord.
+
+One interesting thing about Merb session implementation that you can work with multiple
+session containers in one single application: for instance, cookie store for some long expiring
+values and memcached for something essential. Another interesting thing is that Merb encourages
+people to extend session container which may be very useful for authentication frameworks,
+wizards, activity tracking and so forth. Merb does this by mixing Session
+module into Merb::SessionContainer so if your application extends this module, session containers
+gain new functionality. Keep in mind that Merb core sessions implementation was refactored with
+this extensibility in mind and if you use it, you rely on stable public API and not just monkey
+patching.
+
+Now it's time to start looking at how people use session stores in their application.
+
+h2. Configuration.
+
+Sessions machinery uses some configuration options stored in Merb::Config to figure out
+what session store(s) application uses, what is session id and session secret key, etc.
+
+
+<pre>
+<code>
+require 'merb-core/dispatch/session/container'
+require 'merb-core/dispatch/session/store_container'
+
+module Merb
+  class Config
+    # Returns stores list constructed from
+    # configured session stores (:session_stores config option)
+    # or default one (:session_store config option).
+    def self.session_stores
+      @session_stores ||= begin
+        config_stores = Array(
+          Merb::Config[:session_stores] || Merb::Config[:session_store]
+        )
+        config_stores.map { |name| name.to_sym }
+      end
+    end
+  end # Config
+
+  # The Merb::Session module gets mixed into Merb::SessionContainer to allow
+  # app-level functionality (usually found in app/models/merb/session.rb) for
+  # session.
+  #
+  # You can use this module to implement additional methods to simplify
+  # building wizard-like application components,
+  # authentication frameworks, etc.
+  module Session
+  end
+
+  # This is mixed into Merb::Controller on framework boot.
+  module SessionMixin
+    # Raised when no suitable session store has been setup.
+    class NoSessionContainer < StandardError; end
+
+    # Raised when storing more data than the available space reserved.
+    class SessionOverflow < StandardError; end
+
+    # Session configuration options:
+    #
+    # :session_id_key           The key by which a session value/id is
+    #                           retrieved; defaults to _session_id
+    #
+    # :session_expiry           When to expire the session cookie;
+    #                           defaults to 2 weeks
+    #
+    # :session_secret_key       A secret string which is used to sign/validate
+    #                           session data; min. 16 chars
+    #
+    # :default_cookie_domain    The default domain to write cookies for.
+    def self.included(base)
+      # Register a callback to finalize sessions - needs to run before the cookie
+      # callback extracts Set-Cookie headers from request.cookies.
+      base._after_dispatch_callbacks.unshift lambda { |c| c.request.finalize_session }
+    end
+
+    # ==== Parameters
+    # session_store<String>:: The type of session store to access.
+    #
+    # ==== Returns
+    # SessionContainer:: The session that was extracted from the request object.
+    def session(session_store = nil)
+      request.session(session_store)
+    end
+
+    # Module methods
+
+    # ==== Returns
+    # String:: A random 32 character string for use as a unique session ID.
+    def rand_uuid
+      values = [
+        rand(0x0010000),
+        rand(0x0010000),
+        rand(0x0010000),
+        rand(0x0010000),
+        rand(0x0010000),
+        rand(0x1000000),
+        rand(0x1000000),
+      ]
+      "%04x%04x%04x%04x%04x%06x%06x" % values
+    end
+
+    # Marks this session as needing a new cookie.
+    def needs_new_cookie!
+      @_new_cookie = true
+    end
+
+    def needs_new_cookie?
+      @_new_cookie
+    end
+
+    module_function :rand_uuid, :needs_new_cookie!, :needs_new_cookie?
+
+    module RequestMixin
+
+      def self.included(base)
+        base.extend ClassMethods
+
+        # Keep track of all known session store types.
+        base.cattr_accessor :registered_session_types
+        base.registered_session_types = Dictionary.new
+        base.class_inheritable_accessor :_session_id_key, :_session_secret_key,
+                                        :_session_expiry
+
+        base._session_id_key        = Merb::Config[:session_id_key] || '_session_id'
+        base._session_expiry        = Merb::Config[:session_expiry] || Merb::Const::WEEK * 2
+        base._session_secret_key    = Merb::Config[:session_secret_key]
+      end
+
+      module ClassMethods
+
+        # ==== Parameters
+        # name<~to_sym>:: Name of the session type to register.
+        # class_name<String>:: The corresponding class name.
+        #
+        # === Notres
+        # This is automatically called when Merb::SessionContainer is subclassed.
+        def register_session_type(name, class_name)
+          self.registered_session_types[name.to_sym] = class_name
+        end
+
+      end
+
+      # The default session store type.
+      def default_session_store
+        Merb::Config[:session_store] && Merb::Config[:session_store].to_sym
+      end
+
+      # ==== Returns
+      # Hash:: All active session stores by type.
+      def session_stores
+        @session_stores ||= {}
+      end
+
+      # Returns session container. Merb is able to handle multiple session
+      # stores, hence a parameter to pick it.
+      #
+      # ==== Parameters
+      # session_store<String>:: The type of session store to access,
+      # defaults to default_session_store.
+      #
+      # === Notes
+      # If no suitable session store type is given, it defaults to
+      # cookie-based sessions.
+      def session(session_store = nil)
+        session_store ||= default_session_store
+        if class_name = self.class.registered_session_types[session_store]
+          session_stores[session_store] ||= Object.full_const_get(class_name).setup(self)
+        elsif fallback = self.class.registered_session_types.keys.first
+          Merb.logger.warn "Session store '#{session_store}' not found. Check your configuration in init file."
+          Merb.logger.warn "Falling back to #{fallback} session store."
+          session(fallback)
+        else
+          msg = "No session store set. Set it in init file like this: c[:session_store] = 'activerecord'"
+          Merb.logger.error!(msg)
+          raise NoSessionContainer, msg            
+        end
+      end
+
+      # ==== Parameters
+      # new_session<Merb::SessionContainer>:: A session store instance.
+      #
+      # === Notes
+      # The session is assigned internally by its session_store_type key.
+      def session=(new_session)
+        if self.session?(new_session.class.session_store_type)
+          original_session_id = self.session(new_session.class.session_store_type).session_id
+          if new_session.session_id != original_session_id
+            set_session_id_cookie(new_session.session_id)
+          end
+        end
+        session_stores[new_session.class.session_store_type] = new_session
+      end
+
+      # Whether a session has been setup
+      def session?(session_store = nil)
+        (session_store ? [session_store] : session_stores).any? do |type, store|
+          store.is_a?(Merb::SessionContainer)
+        end
+      end
+
+      # Teardown and/or persist the current sessions.
+      def finalize_session
+        session_stores.each { |name, store| store.finalize(self) }
+      end
+      alias :finalize_sessions :finalize_session
+
+      # Assign default cookie values
+      def default_cookies
+        defaults = {}
+        if route && route.allow_fixation? && params.key?(_session_id_key)
+          Merb.logger.info("Fixated session id: #{_session_id_key}")
+          defaults[_session_id_key] = params[_session_id_key]
+        end
+        defaults
+      end
+
+      # Sets session cookie value.
+      #
+      # ==== Parameters
+      # value<String>:: The value of the session cookie; either the session id or the actual encoded data.
+      # options<Hash>:: Cookie options like domain, path and expired.
+      def set_session_cookie_value(value, options = {})
+        cookies.set_cookie(_session_id_key, value, { :expires => Time.now + _session_expiry }.merge(options))
+      end
+      alias :set_session_id_cookie :set_session_cookie_value
+
+      # ==== Returns
+      # String:: The value of the session cookie; either the session id or the actual encoded data.
+      def session_cookie_value
+        cookies[_session_id_key]
+      end
+      alias :session_id :session_cookie_value
+      
+      # Destroy the session cookie.
+      def destroy_session_cookie
+        cookies.delete(_session_id_key)
+      end
+      
+    end
+  end
+end
+</code>
+</pre>
+
+
+h2. Bootloaders.
+
+<pre>
+<code>
+class Merb::BootLoader::Cookies < Merb::BootLoader
+  def self.run
+    require 'merb-core/dispatch/cookies'
+    Merb::Controller.send(:include, Merb::CookiesMixin)
+    Merb::Request.send(:include, Merb::CookiesMixin::RequestMixin)
+  end
+end
+
+class Merb::BootLoader::SetupSession < Merb::BootLoader
+  # Enable the configured session container(s); any class that inherits from
+  # SessionContainer will be considered by its session_store_type attribute.
+  def self.run
+    # Require all standard session containers.
+    Dir[Merb.framework_root / "merb-core" / "dispatch" / "session" / "*.rb"].each do |file|
+      base_name = File.basename(file, ".rb")
+      require file unless base_name == "container" || base_name == "store_container"
+    end
+    
+    # Set some defaults.
+    Merb::Config[:session_id_key] ||= "_session_id"
+    
+    # List of all session_stores from :session_stores and :session_store config options.
+    config_stores = Merb::Config.session_stores
+    
+    # Register all configured session stores - any loaded session container class
+    # (subclassed from Merb::SessionContainer) will be available for registration.
+    Merb::SessionContainer.subclasses.each do |class_name|
+      if(store = Object.full_const_get(class_name)) && 
+        config_stores.include?(store.session_store_type)
+          Merb::Request.register_session_type(store.session_store_type, class_name)
+      end
+    end
+    
+    # Mixin the Merb::Session module to add app-level functionality to sessions
+    Merb::SessionContainer.send(:include, Merb::Session)
+  end
+end
+</code>
+</pre>
+
+
+
+
+<pre>
+<code>
+module Merb
+  class SessionContainer < Mash
+  
+    class_inheritable_accessor :session_store_type
+    cattr_accessor :subclasses 
+    self.subclasses = []
+  
+    attr_reader :session_id
+    attr_accessor :needs_new_cookie
+  
+    class << self
+  
+      # Register the subclass as an available session store type.
+      def inherited(klass)
+        self.subclasses << klass.to_s
+        super
+      end
+
+      # Generates a new session ID and creates a new session.
+      #
+      # ==== Returns
+      # SessionContainer:: The new session.
+      def generate
+      end
+    
+      # ==== Parameters
+      # request<Merb::Request>:: The Merb::Request that came in from Rack.
+      #
+      # ==== Returns
+      # SessionContainer:: a SessionContainer. If no sessions were found, 
+      # a new SessionContainer will be generated.
+      def setup(request)
+      end    
+    
+    end
+  
+    # ==== Parameters
+    # session_id<String>:: A unique identifier for this session.
+    def initialize(session_id)
+      @_destroy = false
+      self.session_id = session_id
+    end
+    
+    # Assign a new session_id.
+    #
+    # Recreates the cookie with the default expiration time. Useful during log
+    # in for pushing back the expiration date.
+    def session_id=(sid)
+      self.needs_new_cookie = (@session_id && @session_id != sid)
+      @session_id = sid
+    end
+  
+    # Teardown and/or persist the current session.
+    #
+    # If @_destroy is true, clear out the session completely, including
+    # removal of the session cookie itself.
+    #
+    # ==== Parameters
+    # request<Merb::Request>:: The Merb::Request that came in from Rack.
+    def finalize(request)
+    end
+  
+    # Destroy the current session - clears data and removes session cookie.
+    def clear!
+      @_destroy = true
+      self.clear
+    end
+  
+    # Regenerate the session_id.
+    def regenerate
+    end
+
+  end
+end
+</code>
+</pre>
+
+
+<pre>
+<code>
+module Merb
+  
+  class SessionStoreContainer < SessionContainer
+    
+    class_inheritable_accessor :store
+    attr_accessor  :_fingerprint
+    
+    # The class attribute :store holds a reference to an object that implements 
+    # the following interface:
+    #
+    # - retrieve_session(session_id) # returns a Hash
+    # - store_session(session_id, data) # expects data to be Hash
+    # - delete_session(session_id)
+    #
+    # You can use session store classes directly by assigning to :store in your
+    # config/init.rb after_app_loads step, for example:
+    #
+    #   Merb::BootLoader.after_app_loads do
+    #     SessionStoreContainer.store = MemorySession.new
+    #   end
+    #
+    # Or you can inherit from SessionStoreContainer to create a SessionContainer
+    # that delegates to aggregated store.
+    #
+    #   class MemorySession < SessionStoreContainer
+    #     self.session_store_type = :memory
+    #   end
+    #
+    #   class MemoryContainer
+    #   
+    #     def self.retrieve_session(session_id)
+    #       ...
+    #     end
+    #   
+    #     def self.store_session(session_id, data)
+    #       ...
+    #     end
+    #   
+    #     def self.delete_session(session_id)
+    #       ...
+    #     end
+    #   
+    #   end    
+    # When used directly, report as :store store
+    self.session_store_type = :store
+    
+    class << self
+
+      # Generates a new session ID and creates a new session.
+      #
+      # ==== Returns
+      # SessionStoreContainer:: The new session.
+      def generate
+        session = new(Merb::SessionMixin.rand_uuid)
+        session.needs_new_cookie = true
+        session
+      end
+
+      # Setup a new session.
+      #
+      # ==== Parameters
+      # request<Merb::Request>:: The Merb::Request that came in from Rack.
+      #
+      # ==== Returns
+      # SessionContainer:: a SessionContainer. If no sessions were found, 
+      # a new SessionContainer will be generated.
+      def setup(request)
+        session = retrieve(request.session_id)
+        request.session = session
+        # TODO Marshal.dump is slow - needs optimization
+        session._fingerprint = Marshal.dump(request.session.to_hash).hash
+        session
+      end
+            
+      private
+      
+      # ==== Parameters
+      # session_id<String:: The ID of the session to retrieve.
+      #
+      # ==== Returns
+      # SessionStoreContainer:: SessionStoreContainer instance with the session data. If no
+      #   sessions matched session_id, a new SessionStoreContainer will be generated.
+      #
+      # ==== Notes
+      # If there are persisted exceptions callbacks to execute, they all get executed
+      # when Memcache library raises an exception.
+      def retrieve(session_id)
+        unless session_id.blank?
+          begin
+            session_data = store.retrieve_session(session_id)
+          rescue => err
+            Merb.logger.warn!("Could not retrieve session from #{self.name}: #{err.message}")
+          end
+          # Not in container, but assume that cookie exists
+          session_data = new(session_id) if session_data.nil?
+        else
+          # No cookie...make a new session_id
+          session_data = generate
+        end
+        if session_data.is_a?(self)
+          session_data
+        else
+          # Recreate using the existing session as the data, when switching 
+          # from another session type for example, eg. cookie to memcached
+          # or when the data is just a hash
+          new(session_id).update(session_data)
+        end
+      end
+
+    end
+    
+    # Teardown and/or persist the current session.
+    #
+    # If @_destroy is true, clear out the session completely, including
+    # removal of the session cookie itself.
+    #
+    # ==== Parameters
+    # request<Merb::Request>:: The Merb::Request that came in from Rack.
+    #
+    # ==== Notes
+    # The data (self) is converted to a Hash first, since a container might 
+    # choose to do a full Marshal on the data, which would make it persist 
+    # attributes like 'needs_new_cookie', which it shouldn't.
+    def finalize(request)
+      if @_destroy
+        store.delete_session(self.session_id)
+        request.destroy_session_cookie
+      else
+        if _fingerprint != Marshal.dump(data = self.to_hash).hash
+          begin
+            store.store_session(request.session(self.class.session_store_type).session_id, data)
+          rescue => err
+            Merb.logger.warn!("Could not persist session to #{self.class.name}: #{err.message}")
+          end
+        end
+        if needs_new_cookie || Merb::SessionMixin.needs_new_cookie?
+          request.set_session_id_cookie(self.session_id)
+        end
+      end
+    end
+
+    # Regenerate the session ID.
+    def regenerate
+      store.delete_session(self.session_id)
+      self.session_id = Merb::SessionMixin.rand_uuid
+      store.store_session(self.session_id, self)
+    end
+    
+  end
+end
+</code>
+</pre>
+
+
+<pre>
+<code>
+module Merb
+  
+  # Sessions stored in memory.
+  #
+  # Set it up by adding the following to your init file:
+  #
+  #  Merb::Config.use do |c|
+  #    c[:session_store]      = :memory
+  #    c[:memory_session_ttl] = 3600 # in seconds, one hour
+  #  end
+  #
+  # Sessions will remain in memory until the server is stopped or the time
+  # as set in :memory_session_ttl expires. Expired sessions are cleaned up in the
+  # background by a separate thread. Every time reaper
+  # cleans up expired sessions, garbage collection is scheduled start.
+  #
+  # Memory session is accessed in a thread safe manner.
+  class MemorySession < SessionStoreContainer
+    
+    # The session store type
+    self.session_store_type = :memory
+    
+    # Bypass normal implicit class attribute reader - see below.
+    def store
+      self.class.store
+    end
+    
+    # Lazy load/setup of MemorySessionStore.
+    def self.store
+      @_store ||= MemorySessionStore.new(Merb::Config[:memory_session_ttl])
+    end
+    
+  end
+  
+  # Used for handling multiple sessions stored in memory.
+  class MemorySessionStore
+
+    # ==== Parameters
+    # ttl<Fixnum>:: Session validity time in seconds. Defaults to 1 hour.
+    def initialize(ttl=nil)
+      @sessions = Hash.new
+      @timestamps = Hash.new
+      @mutex = Mutex.new
+      @session_ttl = ttl || Merb::Const::HOUR # defaults 1 hour
+      start_timer
+    end
+    
+    # ==== Parameters
+    # session_id<String>:: ID of the session to retrieve.
+    #
+    # ==== Returns
+    # ContainerSession:: The session corresponding to the ID.
+    def retrieve_session(session_id)
+      @mutex.synchronize {
+        @timestamps[session_id] = Time.now
+        @sessions[session_id]
+      }
+    end
+
+    # ==== Parameters
+    # session_id<String>:: ID of the session to set.
+    # data<ContainerSession>:: The session to set.
+    def store_session(session_id, data)
+      @mutex.synchronize {
+        @timestamps[session_id] = Time.now
+        @sessions[session_id] = data
+      }
+    end
+
+    # ==== Parameters
+    # session_id<String>:: ID of the session to delete.
+    def delete_session(session_id)
+      @mutex.synchronize {
+        @timestamps.delete(session_id)
+        @sessions.delete(session_id)
+      }
+    end
+
+    # Deletes any sessions that have reached their maximum validity.
+    def reap_expired_sessions
+      @timestamps.each do |session_id,stamp|
+        delete_session(session_id) if (stamp + @session_ttl) < Time.now 
+      end
+      GC.start
+    end
+
+    # Starts the timer that will eventually reap outdated sessions.
+    def start_timer
+      Thread.new do
+        loop {
+          sleep @session_ttl
+          reap_expired_sessions
+        } 
+      end  
+    end
+  end
+end
+</code>
+</pre>
+
+
+Next is memcached store which implies you have either memcache-client or memcached gem installed.
+
+<pre>
+<code>
+module Merb
+
+  # Sessions stored in memcached.
+  #
+  # Requires setup in your +init.rb+.
+  # 
+  # This for the 'memcache-client' gem:
+  #
+  #   Merb::BootLoader.after_app_loads do
+  #     require 'memcache'
+  #     Merb::MemcacheSession.store = 
+  #        MemCache.new('127.0.0.1:11211', :namespace => 'my_app')
+  #   end
+  #
+  # Or this for the 'memcached' gem:
+  #
+  #   Merb::BootLoader.after_app_loads do
+  #     require 'memcache'
+  #     Merb::MemcacheSession.store = 
+  #        Memcached.new('127.0.0.1:11211', :namespace => 'my_app')
+  #   end
+  
+  class MemcacheSession < SessionStoreContainer
+    
+    # The session store type
+    self.session_store_type = :memcache
+    
+  end
+  
+  module MemcacheStore
+
+    # Make the Memcached gem conform to the SessionStoreContainer interface
+
+    # ==== Parameters
+    # session_id<String>:: ID of the session to retrieve.
+    #
+    # ==== Returns
+    # ContainerSession:: The session corresponding to the ID.
+    def retrieve_session(session_id)
+      get("session:#{session_id}")
+    end
+
+    # ==== Parameters
+    # session_id<String>:: ID of the session to set.
+    # data<ContainerSession>:: The session to set.
+    def store_session(session_id, data)
+      set("session:#{session_id}", data)
+    end
+
+    # ==== Parameters
+    # session_id<String>:: ID of the session to delete.
+    def delete_session(session_id)
+      delete("session:#{session_id}")
+    end
+
+  end
+
+end
+
+# For the memcached gem.
+class Memcached
+  include Merb::MemcacheStore
+end
+
+# For the memcache-client gem.
+class MemCache
+  include Merb::MemcacheStore
+end
+</code>
+</pre>
+
+
+
+Last one is one of most often used session stores: cookie store.
+
+<pre>
+<code>
+require 'base64'        # to convert Marshal.dump to ASCII
+require 'openssl'       # to generate the HMAC message digest
+module Merb
+
+  # If you have more than 4K of session data or don't want your data to be
+  # visible to the user, pick another session store.
+  #
+  # CookieOverflow is raised if you attempt to store more than 4K of data.
+  # TamperedWithCookie is raised if the data integrity check fails.
+  #
+  # A message digest is included with the cookie to ensure data integrity:
+  # a user cannot alter session data without knowing the secret key included
+  # in the hash.
+  #
+  # To use Cookie Sessions, set in config/merb.yml
+  #  :session_secret_key - your secret digest key
+  #  :session_store: cookie
+  class CookieSession < SessionContainer
+    # TODO (maybe):
+    # include request ip address
+    # AES encrypt marshaled data
+
+    # Raised when storing more than 4K of session data.
+    class CookieOverflow < StandardError; end
+
+    # Raised when the cookie fails its integrity check.
+    class TamperedWithCookie < StandardError; end
+
+    # Cookies can typically store 4096 bytes.
+    MAX = 4096
+    DIGEST = OpenSSL::Digest::Digest.new('SHA1') # or MD5, RIPEMD160, SHA256?
+
+    attr_accessor :_original_session_data
+
+    # The session store type
+    self.session_store_type = :cookie
+
+    class << self
+      # Generates a new session ID and creates a new session.
+      #
+      # ==== Returns
+      # SessionContainer:: The new session.
+      def generate
+        self.new(Merb::SessionMixin.rand_uuid, "", Merb::Request._session_secret_key)
+      end
+
+      # Set up a new session on request: make it available on request instance.
+      #
+      # ==== Parameters
+      # request<Merb::Request>:: The Merb::Request that came in from Rack.
+      #
+      # ==== Returns
+      # SessionContainer:: a SessionContainer. If no sessions were found,
+      # a new SessionContainer will be generated.
+      def setup(request)
+        session = self.new(Merb::SessionMixin.rand_uuid,
+          request.session_cookie_value, request._session_secret_key)
+        session._original_session_data = session.to_cookie
+        request.session = session
+      end
+
+    end
+
+    # ==== Parameters
+    # session_id<String>:: A unique identifier for this session.
+    # cookie<String>:: The raw cookie data.
+    # secret<String>:: A session secret.
+    #
+    # ==== Raises
+    # ArgumentError:: Nil or blank secret.
+    def initialize(session_id, cookie, secret)
+      super session_id
+      if secret.blank? || secret.length < 16
+        msg = "You must specify a session_secret_key in your init file, and it must be at least 16 characters"
+        Merb.logger.warn(msg)
+        raise ArgumentError, msg
+      end
+      @secret = secret
+      self.update(unmarshal(cookie))
+    end
+
+    # Teardown and/or persist the current session.
+    #
+    # If @_destroy is true, clear out the session completely, including
+    # removal of the session cookie itself.
+    #
+    # ==== Parameters
+    # request<Merb::Request>:: request object created from Rack environment.
+    def finalize(request)
+      if @_destroy
+        request.destroy_session_cookie
+      elsif _original_session_data != (new_session_data = self.to_cookie)
+        request.set_session_cookie_value(new_session_data)
+      end
+    end
+    
+    # Regenerate the session_id.
+    def regenerate
+      self.session_id = Merb::SessionMixin.rand_uuid
+    end
+
+    # Create the raw cookie string; includes an HMAC keyed message digest.
+    #
+    # ==== Returns
+    # String:: Cookie value.
+    #
+    # ==== Raises
+    # CookieOverflow:: More than 4K of data put into session.
+    #
+    # ==== Notes
+    # Session data is converted to a Hash first, since a container might
+    # choose to marshal it, which would make it persist
+    # attributes like 'needs_new_cookie', which it shouldn't.
+    def to_cookie
+      unless self.empty?
+        data = self.serialize
+        value = Merb::Request.escape "#{data}--#{generate_digest(data)}"
+        if value.size > MAX
+          msg = "Cookies have limit of 4K. Session contents: #{data.inspect}"
+          Merb.logger.error!(msg)
+          raise CookieOverflow, msg
+        end
+        value
+      end
+    end
+
+    private
+
+    # Generate the HMAC keyed message digest. Uses SHA1.
+    def generate_digest(data)
+      OpenSSL::HMAC.hexdigest(DIGEST, @secret, data)
+    end
+
+    # Unmarshal cookie data to a hash and verify its integrity.
+    #
+    # ==== Parameters
+    # cookie<~to_s>:: The cookie to unmarshal.
+    #
+    # ==== Raises
+    # TamperedWithCookie:: The digests don't match.
+    #
+    # ==== Returns
+    # Hash:: The stored session data.
+    def unmarshal(cookie)
+      if cookie.blank?
+        {}
+      else
+        data, digest = Merb::Request.unescape(cookie).split('--')
+        return {} if data.blank? || digest.blank?
+        unless digest == generate_digest(data)
+          clear
+          unless Merb::Config[:ignore_tampered_cookies]
+            raise TamperedWithCookie, "Maybe the site's session_secret_key has changed?"
+          end
+        end
+        unserialize(data)
+      end
+    end
+
+    protected
+
+    # Serialize current session data as a Hash.
+    # Uses Base64 encoding for integrity.
+    def serialize
+      Base64.encode64(Marshal.dump(self.to_hash)).chop
+    end
+
+    # Unserialize the raw cookie data to a Hash
+    def unserialize(data)
+      Marshal.load(Base64.decode64(data)) rescue {}
+    end
+  end
+end
+</code>
+</pre>
+
+
+
+h2. DataMapper store.
+
+<pre>
+<code>
+begin
+  gem 'dm-core', '=0.9.6'
+  require 'dm-core'
+rescue LoadError => e
+  require 'data_mapper'
+end
+
+require 'merb-core/dispatch/session'
+
+module Merb
+  class DataMapperSessionStore
+    include ::DataMapper::Resource
+
+    table_name = Merb::Plugins.config[:merb_datamapper][:session_storage_name] || 'sessions'
+    storage_names[default_repository_name] = table_name
+
+    property :session_id, String, :size => 32, :nullable => false, :key => true
+    property :data, Object, :default => {}, :lazy => false
+    property :created_at, DateTime, :default => Proc.new { |r, p| DateTime.now }
+
+    ##
+    # Retrieves a session from the session store
+    #
+    # @param session_id<String> The session_id to retrieve the session for
+    #
+    # @returns <nil, DataMapperSessionStore> The session corresponding to the id, or nil
+    def self.retrieve_session(session_id)
+      if session = get(session_id)
+        session.data
+      end
+    end
+
+    ##
+    # Stores the data in a session with the given session_id, creating it if
+    # required
+    #
+    # @param session_id<String> The session_id to find the session by, or the id of the new session
+    # @param data<Object> The data to be stored in the session. Probably a hash
+    def self.store_session(session_id, data)
+      if session = get(session_id)
+        session.update_attributes(:data => data)
+      else
+        create(:session_id => session_id, :data => data)
+      end
+    end
+
+    ##
+    # Deletes a session with the given id
+    #
+    # @param session_id<String> The session to destroy
+    def self.delete_session(session_id)
+      all(:session_id => session_id).destroy!
+    end
+
+    def self.default_repository_name
+      Merb::Plugins.config[:merb_datamapper][:session_repository_name] || :default
+    end
+  end
+
+  class DataMapperSession < SessionStoreContainer
+
+    # The session store type
+    self.session_store_type = :datamapper
+
+    # The store object is the model class itself
+    self.store = DataMapperSessionStore
+  end
+end
+</code>
+</pre>
+
+
+
+h2. Sequel store.
+
+<pre>
+<code>
+require 'sequel'
+require 'merb-core/dispatch/session'
+require 'base64'
+
+module Merb
+
+  table_name = (Merb::Plugins.config[:merb_sequel][:session_table_name] || "sessions")
+
+  # Sessions stored in Sequel model.
+  #
+  # To use Sequel based sessions add the following to config/init.rb:
+  #
+  # Merb::Config[:session_store] = 'sequel'
+
+  class SequelSessionStore < Sequel::Model(table_name.to_sym)
+    
+    set_schema do
+      primary_key :id
+      varchar :session_id
+      text :data
+      timestamp :created_at
+    end
+
+    class << self
+      
+      # ==== Parameters
+      # session_id<String>:: ID of the session to retrieve.
+      #
+      # ==== Returns
+      # ContainerSession:: The session corresponding to the ID.
+      def retrieve_session(session_id)
+        if item = find(:session_id => session_id)
+          item.data
+        end
+      end
+
+      # ==== Parameters
+      # session_id<String>:: ID of the session to set.
+      # data<ContainerSession>:: The session to set.
+      def store_session(session_id, data)
+        if item = find(:session_id => session_id)
+          item.update(:data => data)
+        else
+          create(:session_id => session_id, :data => data, :created_at => Time.now)
+        end
+      end
+
+      # ==== Parameters
+      # session_id<String>:: ID of the session to delete.
+      def delete_session(session_id)
+        if item = find(:session_id => session_id)
+          item.delete
+        end
+      end
+    
+      # ==== Returns
+      # Integer:: The maximum length of the 'data' column.
+      def data_column_size_limit
+        512 # TODO - figure out how much space we actually have
+      end
+
+      alias :create_table! :create_table
+      alias :drop_table! :drop_table
+    end
+
+    # Lazy-unserialize session state.
+    def data
+      @data ||= (@values[:data] ? Marshal.load(@values[:data]) : {})
+    end
+    
+    # Virtual attribute writer - override.
+    def data=(hsh)
+      @data = hsh if hsh.is_a?(Hash)
+    end
+
+    # Has the session been loaded yet?
+    def loaded?
+      !!@data
+    end
+
+    before_save do 
+      @values[:data] = Marshal.dump(self.data)
+      if @values[:data].size > self.class.data_column_size_limit
+        raise Merb::SessionMixin::SessionOverflow
+      end    
+    end
+    
+  end
+
+  unless Sequel::Model.db.table_exists?(table_name.to_sym)
+    puts "Warning: The database did not contain a '#{table_name}' table for sessions."
+    SequelSessionStore.class_eval { create_table unless table_exists? }
+    puts "Created sessions table."
+  end
+  
+  class SequelSession < SessionStoreContainer
+    
+    # The session store type
+    self.session_store_type = :sequel
+    
+    # The store object is the model class itself
+    self.store = SequelSessionStore
+    
+  end
+
+end
+</code>
+</pre>
+
+
+
+h2. ActiveRecord store.
+
+<pre>
+<code>
+require 'merb-core/dispatch/session'
+require 'active_record'
+require 'base64'
+
+module Merb
+
+  # Sessions stored in ActiveRecord model.
+  #
+  # To use ActiveRecord based sessions add the following to config/init.rb:
+  #
+  # Merb::Config[:session_store] = 'activerecord'
+  
+  class ActiveRecordSessionStore < ::ActiveRecord::Base
+  
+    table_name = (Merb::Plugins.config[:merb_active_record][:session_table_name] || "sessions")
+  
+    set_table_name table_name
+    
+    serialize :data
+  
+    class << self
+  
+      # ==== Parameters
+      # session_id<String>:: ID of the session to retrieve.
+      #
+      # ==== Returns
+      # ContainerSession:: The session corresponding to the ID.
+      def retrieve_session(session_id)
+        if item = find_by_session_id(session_id)
+          item.data
+        end
+      end
+
+      # ==== Parameters
+      # session_id<String>:: ID of the session to set.
+      # data<ContainerSession>:: The session to set.
+      def store_session(session_id, data)
+        if item = find_by_session_id(session_id)
+          item.update_attributes!(:data => data)
+        else
+          create(:session_id => session_id, :data => data)
+        end
+      end
+
+      # ==== Parameters
+      # session_id<String>:: ID of the session to delete.
+      def delete_session(session_id)
+        delete_all(["#{connection.quote_column_name('session_id')} IN (?)", session_id])
+      end
+    
+    end
+
+  end
+  
+  class ActiveRecordSession < SessionStoreContainer
+    
+    # The session store type
+    self.session_store_type = :activerecord
+    
+    # The store object is the model class itself
+    self.store = ActiveRecordSessionStore
+    
+  end
+    
+end
+</code>
+</pre>
+
+
+
+h1. Cookies.
+
+Now lets see how cookies put together in merb-core. 
+
+<pre>
+<code>
+module Merb
+
+  class Cookies < Mash
+  
+    def initialize(constructor = {})
+      @_options_lookup  = Mash.new
+      @_cookie_defaults = { "domain" => Merb::Controller._default_cookie_domain, "path" => '/' }
+      super constructor
+    end
+    
+    # Implicit assignment of cookie key and value.
+    #
+    # ==== Parameters
+    # name<~to_s>:: Name of the cookie.
+    # value<~to_s>:: Value of the cookie.
+    #
+    # ==== Notes
+    # By using this method, a cookie key is marked for being
+    # included in the Set-Cookie response header.
+    def []=(key, value)
+      @_options_lookup[key] ||= {}
+      super
+    end
+    
+    # Explicit assignment of cookie key, value and options
+    #
+    # ==== Parameters
+    # name<~to_s>:: Name of the cookie.
+    # value<~to_s>:: Value of the cookie.
+    # options<Hash>:: Additional options for the cookie (see below).
+    #
+    # ==== Options (options)
+    # :path<String>:: The path for which this cookie applies. Defaults to "/".
+    # :expires<Time>:: Cookie expiry date.
+    # :domain<String>:: The domain for which this cookie applies.
+    # :secure<Boolean>:: Security flag.
+    #
+    # ==== Notes
+    # By using this method, a cookie key is marked for being
+    # included in the Set-Cookie response header.
+    def set_cookie(name, value, options = {})
+      @_options_lookup[name] = options
+      self[name] = value
+    end
+    
+    # Removes the cookie on the client machine by setting the value to an empty
+    # string and setting its expiration date into the past.
+    #
+    # ==== Parameters
+    # name<~to_s>:: Name of the cookie to delete.
+    # options<Hash>:: Additional options to pass to +set_cookie+.
+    def delete(name, options = {})
+      set_cookie(name, "", options.merge("expires" => Time.at(0)))
+    end
+    
+    # Generate any necessary headers.
+    #
+    # ==== Returns
+    # Hash:: The headers to set, or an empty array if no cookies are set.
+    def extract_headers(controller_defaults = {})
+      defaults = @_cookie_defaults.merge(controller_defaults)
+      cookies = []
+      self.each do |name, value|
+        # Only set cookies that marked for inclusion in the response header. 
+        next unless @_options_lookup[name]
+        options = defaults.merge(@_options_lookup[name])
+        if (expiry = options["expires"]).respond_to?(:gmtime)
+          options["expires"] = expiry.gmtime.strftime(Merb::Const::COOKIE_EXPIRATION_FORMAT)
+        end
+        secure  = options.delete("secure")
+        kookie  = "#{name}=#{Merb::Request.escape(value)}; "
+        # WebKit in particular doens't like empty cookie options - skip them.
+        options.each { |k, v| kookie << "#{k}=#{v}; " unless v.blank? }
+        kookie  << 'secure' if secure
+        cookies << kookie.rstrip
+      end
+      cookies.empty? ? {} : { 'Set-Cookie' => cookies }
+    end
+    
+  end
+  
+  module CookiesMixin
+    
+    def self.included(base)
+      # Allow per-controller default cookie domains (see callback below)
+      base.class_inheritable_accessor :_default_cookie_domain
+      base._default_cookie_domain = Merb::Config[:default_cookie_domain]
+      
+      # Add a callback to enable Set-Cookie headers
+      base._after_dispatch_callbacks << lambda do |c|
+        headers = c.request.cookies.extract_headers("domain" => c._default_cookie_domain)
+        c.headers.update(headers)
+      end
+    end
+    
+    # ==== Returns
+    # Merb::Cookies::
+    #   A new Merb::Cookies instance representing the cookies that came in
+    #   from the request object
+    #
+    # ==== Notes
+    # Headers are passed into the cookie object so that you can do:
+    #   cookies[:foo] = "bar"
+    def cookies
+      request.cookies
+    end
+    
+    module RequestMixin
+      # ==== Returns
+      # Hash:: The cookies for this request.
+      #
+      # ==== Notes
+      # If a method #default_cookies is defined it will be called. This can
+      # be used for session fixation purposes for example. The method returns
+      # a Hash of key => value pairs.
+      def cookies
+        @cookies ||= begin
+          values  = self.class.query_parse(@env[Merb::Const::HTTP_COOKIE], ';,')
+          cookies = Merb::Cookies.new(values)
+          cookies.update(default_cookies) if respond_to?(:default_cookies)
+          cookies
+        end
+      end
+    end   
+  end
+end
+</code>
+</pre>
+
+
