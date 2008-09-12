@@ -1,7 +1,7 @@
 Right after that Merb.environment and Merb.root are initialized from Merb configuration,
 and accordingly to action specified on command line Merb instance is either killed or started.
 
-Merb.start can be found in lib/merb-core.rb in Merb Git repository.
+Merb.start can be found in lib/merb-core.rb in Merb-core Git repository.
 
 Merb.start (lib/merb-core.rb):
 <pre>
@@ -34,11 +34,11 @@ end
 On server start Merb has to figure out whether server is running on given port(s), so
 it calculates pid file path, reads it and checks the process if it's alive.
 If not, Merb runs bootloader and starts Rack adapter. This pid file requirement
-means that if you set Merb port, daemonization options or pid file location in config file
-of your application, it would have no effect on application start.
+means that if you set Merb port, daemonization options or pid file location in init file
+of your application, it would have no effect on application start because init file
+is loaded later in the process.
 So you must specify port, daemonization option and pid file location from command
-line or in the startup script you may write instead of default merb executable.
-
+line or in the startup script you may use instead of default merb executable.
 
 
 Merb::Server.start (lib/merb-core/server.rb):
