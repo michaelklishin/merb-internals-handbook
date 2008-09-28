@@ -123,7 +123,7 @@ Server & environment options:
 
  * _router\_file_ is name of the router file, default is 'router.rb'.	 
 
- * _session\_cookie\_domain_ is a domain used for cookies.
+ * _default\_cookie\_domain_ is a domain used for cookies if no explicit domain specified.
 
  * _session\_expiry_ is session expiration period, defaults to 2 weeks.
 
