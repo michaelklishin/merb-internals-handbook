@@ -746,7 +746,14 @@ end
 
 h2. LoadClasses bootloader.
 
-This is probably the most tricky and complicated piece of code in the whole framework.
+This is probably the most tricky and complicated piece of code in the whole framework. 
+
+Classes load may use one of two strategies: "classic" and forking.
+Forking is not available on some platforms (Windows, JRuby are most notable) but
+provides bullet-proof class reloading on platforms where Kernel#fork is supported by Ruby.
+
+h3. "Classic" class loading strategy.
+
 From the bird's eye view, LoadClasses bootloader does the following (at some
 point in time, not exactly in this order):
 
@@ -765,6 +772,16 @@ point in time, not exactly in this order):
  * Tries to load classes until all dependencies are met (and all classes are
    loaded) or	after load attempt total number of classes in ObjectSpace is still
    what it used to be, but set of failed classes is not empty.
+
+h3. Forking, master/workers strategy.
+
+When forking is used, Merb runs a master process and one or many workers that
+do the job. On Ruby Enterprise Edition all processes use shared memory so forking has no extra memory footprint. On "regular" MRI memory footprint is
+still very small (usually 2 to 5 megs or RAM).
+
+
+
+h3. Some more details.
 
 Note that this bootloader does not reload classes using timer or load and
 inline templates: those routines are done by ReloadClasses, Templates and
