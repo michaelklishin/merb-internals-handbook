@@ -500,12 +500,13 @@ Dependencies bootloader loads init file and framework/application
 dependencies. The following actions are done in sequence:
 
  * init file path is calculated
- * init file is loaded
- * environment-specific init file path is calculated
- * environment-specific init file is loaded
+ * init file is loaded unless it's listed in disabled components
+ * environment-specific init file path is calculated unless init file is listed in disabled components
+ * environment-specific init file is loaded unless init file is listed in disabled components
  * JSON gem is loaded unless it's listed in disabled components
  * dependencies listed in init file are loaded
- * logger is updated
+ * logger is updated to use new stream or file that might have been specified in
+   init file
 
 Init file path can be configured (configuration key, as previously mentioned,
 is :init_file). If it's not, Merb tries to find init.rb under config directory
