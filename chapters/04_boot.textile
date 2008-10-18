@@ -518,18 +518,22 @@ at config/environments/stage2.rb (assuming nobody uses custom config directory p
 If for some reason Merb.environment is nil (probably never happens unless you do nasty
 things), env-specific init file is not loaded.
 
-JSON gem is an optional dependency required next unless it's disabled (listed in
-Merb.disabled_components; use Merb.disable :json instead of direct operation on it).
+JSON gem is one optional dependency required next unless it's disabled (listed in
+Merb.disabled_components; use Merb.disable :json instead of direct operation on it). Another optional component is init file. Some generators or specific tasks
+need no load init file. You can tell Merb not load it using Merb.disable(:initfile).
 
-Now when init files are loaded, and application dependencies are known to Merb,
+When init files (init.rb and env-specific file from config/environments) are loaded, and application dependencies are known to Merb,
 it runs through dependencies list and loads them one by one using Kernel.load_dependency.
-Again, because init file may specify additional logger configuration, logger is updated unless
-it's configuration is the same as default.
+Again, because init file may specify additional logger configuration, logger is updated as soon as init file is loaded.
 
 Merb::BootLoader::Dependencies (lib/merb-core/bootloader.rb):
 <pre>
 class Merb::BootLoader::Dependencies < Merb::BootLoader
 
+  # ==== Returns
+  # Array[Gem::Dependency]:: The dependencies regiestered in init.rb.
+  #
+  # @api plugin
   cattr_accessor :dependencies
   self.dependencies = []
 
@@ -542,49 +546,126 @@ class Merb::BootLoader::Dependencies < Merb::BootLoader
   # before or after insertion methods. Since these are loaded from this
   # bootloader (Dependencies), they can only adapt the bootloaders that
   # haven't been loaded up until this point.
-
+  #
+  # ==== Returns
+  # nil
+  #
+  # @api plugin
   def self.run
-    load_initfile
-    load_env_config
+    set_encoding
+    # this is crucial: load init file with all the preferences
+    # then environment init file, then start enabling specific
+    # components, load dependencies and update logger.
+    unless Merb::disabled?(:initfile)
+      load_initfile 
+      load_env_config
+    end
     enable_json_gem unless Merb::disabled?(:json)
     load_dependencies
     update_logger
+    nil
   end
 
+  # Load each dependency that has been declared so far.
+  # 
+  # ==== Returns
+  # nil
+  #
+  # @api private
   def self.load_dependencies
-    dependencies.each { |name, ver| Kernel.load_dependency(name, *ver) }
+    dependencies.each { |dependency| Kernel.load_dependency(dependency) }
+    nil
   end
 
+  # Loads json or json_pure and requires it.
+  #
+  # ==== Returns
+  # nil
   def self.enable_json_gem
+    gem "json"
     require "json/ext"
   rescue LoadError
+    gem "json_pure"
     require "json/pure"
   end
 
+  # Resets the logger and sets the log_stream to Merb::Config[:log_file] 
+  # if one is specified, falling back to STDOUT.
+  #
+  # ==== Returns
+  # nil
+  #
+  # @api private
   def self.update_logger
-    updated_logger_options = [ Merb.log_file, Merb::Config[:log_level], Merb::Config[:log_delimiter], Merb::Config[:log_auto_flush] ]
-    Merb::BootLoader::Logger.run if updated_logger_options != Merb.logger.init_args
+    Merb.reset_logger!
+
+    # If log file is given, use it and not log stream we have.
+    if Merb::Config[:log_file]
+      raise "log file should be a string, got: #{Merb::Config[:log_file].inspect}" unless Merb::Config[:log_file].is_a?(String)
+      STDOUT.puts "Logging to file at #{Merb::Config[:log_file]}" unless Merb.testing?
+      Merb::Config[:log_stream] = File.open(Merb::Config[:log_file], "w+")
+    # but if it's not given, fallback to log stream or stdout
+    else
+      Merb::Config[:log_stream] ||= STDOUT
+    end
+    
+    nil
+  end
+
+  # Default encoding to UTF8 if it has not already been set to something else.
+  #
+  # ==== Returns
+  # nil
+  #
+  # @api private
+  def self.set_encoding
+    $KCODE = 'UTF8' if $KCODE == 'NONE' || $KCODE.blank?
+    nil
   end
 
   private
 
     # Determines the path for the environment configuration file
+    #
+    # ==== Returns
+    # String:: The path to the config file for the environment
+    #
+    # @api private
     def self.env_config
       Merb.dir_for(:config) / "environments" / (Merb.environment + ".rb")
     end
 
     # Checks to see whether or not an environment configuration exists
+    #
+    # ==== Returns
+    # Boolean:: Whether or not the environment configuration file exists.
+    #
+    # @api private
     def self.env_config?
       Merb.environment && File.exist?(env_config)
     end
 
-    # Loads the environment configuration file, if any
+    # Loads the environment configuration file, if it is present
+    #
+    # ==== Returns
+    # nil
+    #
+    # @api private
     def self.load_env_config
-      load(env_config) if env_config?
+      if env_config?
+        STDOUT.puts "Loading #{env_config}" unless Merb.testing?
+        load(env_config)
+      end
+      nil
     end
 
     # Determines the init file to use, if any.
     # By default Merb uses init.rb from application config directory.
+    #
+    # ==== Returns
+    # nil
+    #
+    # @api private
     def self.initfile
       if Merb::Config[:init_file]
         Merb::Config[:init_file].chomp(".rb") + ".rb"
@@ -594,10 +675,22 @@ class Merb::BootLoader::Dependencies < Merb::BootLoader
     end
 
     # Loads the init file, should one exist
+    #
+    # ==== Returns
+    # nil
+    #
+    # @api private
     def self.load_initfile
-      load(initfile) if File.exists?(initfile)
+      if File.exists?(initfile)
+        STDOUT.puts "Loading init file from #{initfile}" unless Merb.testing?
+        load(initfile)
+      elsif !Merb.testing?
+        Merb.fatal! "You are not in a Merb application, or you are in " \
+          "a flat application and have not specified the init file. If you " \
+          "are trying to create a new merb application, use merb-gen app."
+      end
+      nil
     end
-
 end
 </pre>
 
