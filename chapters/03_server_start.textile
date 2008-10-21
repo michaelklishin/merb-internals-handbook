@@ -1,9 +1,41 @@
-Right after that Merb.environment and Merb.root are initialized from Merb configuration,
-and accordingly to action specified on command line Merb instance is either killed or started.
+== Overview of this chapter
 
-Merb.start can be found in lib/merb-core.rb in Merb-core Git repository.
+What you are going to learn in this chapter:
 
-Merb.start (lib/merb-core.rb):
+* How Merb bootstraps itself.
+* How daemonization works.
+* How Merb manages pid files.
+* How Merb reacts to signals sent to it.
+
+This chapter is about plumbing, really low level things.
+It heavily intersects with certain parts of the next chapter.
+You can think of it as two phases of boot: this chapter describes
+early stage (bootstrap) and second one describes later stage
+(bootloaders run).
+
+If you are not interested in all the gory details of framework/server
+operation, feel free to skip this chapter. Make sure you look through
+next one in any case though: some details in the next chapter are
+not directly related to boot and may help a lot in understanding of Merb,
+yet are simple enough even for beginners.
+
+== Diving in
+
+So, command line options (or programmatically passed options) are
+parsed at this point and Merb is ready to start boot process.
+Right after that Merb does basically 4 things:
+
+
+* Merb.environment and Merb.root are initialized from
+Merb configuration.
+* Merb checks action you give it in arguments (kill, forced kill, fast redeploy, etc).
+* Merb does early stage work of managing pid files,
+  process privilegies and daemonization.
+
+To find all the details, we need to start at Merb.start
+method. It can be found in merb-core/lib/merb-core.rb.
+
+Merb.start (merb-core/lib/merb-core.rb):
 <pre>
 # Start Merb by setting up the Config and then starting the server.
 # Set the Merb application environment and the root path.
@@ -52,8 +84,12 @@ process. So you must specify port, daemonization option and pid file
 location from command line or in the startup script you may use
 instead of default merb executable.
 
+Note that during this early stage logger is bound to stdout so
+even though logger is not really initialized at this point,
+you can see some output.
 
-Merb::Server.start (lib/merb-core/server.rb):
+Now let's take a look at implementation of startup:
+Merb::Server.start (merb-core/lib/merb-core/server.rb):
 <pre>
 # Start a Merb server, in either foreground, daemonized or cluster mode.
 #
@@ -104,7 +140,7 @@ Original process exits.
 A couple of notes: child process chdirs to wherever Merb.root
 points to, pid file is removed on exit.
 
-Merb::Server#daemonize (lib/merb-core/server.rb):
+Merb::Server#daemonize (merb-core/lib/merb-core/server.rb):
 <pre>
 # ==== Parameters
 # port<~to_s>:: The port of the Merb process to daemonize.
@@ -135,9 +171,42 @@ rescue NotImplementedError => e
 end
 </pre>
 
+To finish this pid files story, here's how Merb figures out if
+the process specified in found pid file is alive:
+
+* Find out pid file location.
+* Read process id from it.
+* Send signal 0 to that pid and see how it works out.
+
+<pre>
+# ==== Parameters
+# port<~to_s>:: The port to check for Merb instances on.
+#
+# ==== Returns
+# Boolean::
+#   True if Merb is running on the specified port.
+#
+# @api private
+def alive?(port)
+  pidfile = pid_file(port)
+  pid     = pid_in_file(pidfile)
+  Process.kill(0, pid)
+  true
+rescue Errno::ESRCH, Errno::ENOENT
+  false
+rescue Errno::EACCES => e
+  Merb.fatal!("You don't have access to the PID file at #{pidfile}: #{e.message}")
+end
+</pre>
+
 In both daemon and foreground run scenarios, boot is started next
 by calling Merb::Server.bootup:
 
+* Shutdown on SIGTERM signal.
+* Run bootloaders.
+* Start Rack adapter.
+
+Merb::Server.bootup (merb-core/lib/merb-core/server.rb)
 <pre>
 # Starts up Merb by running the bootloader and starting the adapter.
 #
@@ -154,13 +223,13 @@ end
 
 Bootloader loads and initializes the framework, application code and does
 things like template inlining (don't worry if you do not know what
-it means, it's nothing special really).
+it means, it's explained later in the handbook).
 
 Since boot process involves several steps and is important part of
 the framework operation, it takes the whole next chapter.
 
 
-Now let's look at how pid file is stored removed. It's simple.
+Now let's look at how pid file is stored and removed. It's simple.
 When we store process id to the file (so other programs can
 figure out what Merb process id for certain port is), we
 follow simple convention:
@@ -267,6 +336,118 @@ def remove_pid_file(port)
   if File.exist?(pidfile)
     Merb.logger.warn! "Removing pid file #{pidfile} (port/socket: #{port})..."
     FileUtils.rm(pidfile)
+  end
+end
+</pre>
+
+== Killing time
+
+<blockquote>
+The silence is over, they attack again
+Killing and hatred drive me insane
+Reports come in of a heavy attack
+Message received, we're moving back
+</blockquote>
+
+(Sweet Savage "Killing time")
+
+So far, so good. But what if you ask merb to stop running instances?
+How violent merb gets?
+
+It turns out not very. Here is how it works in the nutshell:
+
+* Figure out signal to use from the passed action.
+* SIGINT  is used for graceful stop.
+* SIGKILL is used for forced stop.
+* Read pids from pid files, send signal to the process with id in it.
+
+Merb::Server.kill_pid (merb-core/lib/merb-core/server.rb)
+<pre>
+# ==== Parameters
+# port<~to_s>:: The port of the Merb process to kill.
+# sig<~to_s>:: The signal to send to the process, the default is 9 - SIGKILL.
+#
+# No    Name         Default Action       Description
+# 1     SIGHUP       terminate process    terminal line hangup
+# 2     SIGINT       terminate process    interrupt program
+# 3     SIGQUIT      create core image    quit program
+# 4     SIGILL       create core image    illegal instruction
+# 9     SIGKILL      terminate process    kill program
+# 15    SIGTERM      terminate process    software termination signal
+# 30    SIGUSR1      terminate process    User defined signal 1
+# 31    SIGUSR2      terminate process    User defined signal 2
+#
+# ==== Alternatives
+# If you pass "all" as the port, the signal will be sent to all Merb processes.
+#
+# @api private
+def kill(port, sig = "INT")
+  if sig.is_a?(Integer)
+    sig = Signal.list.invert[sig]
+  end
+  
+  Merb::BootLoader::BuildFramework.run
+
+  # If we kill the master, then the workers should be reaped also.
+  if %w(main master all).include?(port)
+    # If a graceful exit is requested then send INT to the master process.
+    #
+    # Otherwise read pids from pid files and try to kill each process in turn.
+    kill_pid(sig, pid_file("main")) if sig == "INT"
+  else
+    kill_pid(sig, pid_file(port))
+  end
+end
+</pre>
+
+Some gory details: Ruby can use signal names or numbers. Merb converts numbers
+into names using mapping returned by Signal.list. Before pid file paths
+are calculated, framework layout should be initialized so here we get ahead of
+ourselves a bit and see one of Merb's bootloaders mentioned: BuildFramework
+bootloader. It just sets paths layout: where config dir is, where logs dir is,
+et cetera.
+
+You also can see master process mentioned, it is explained in details in
+the next chapter.
+
+To stop process with given pid file, Merb::Server.kill_pid is used.
+It takes signal to use nd pid file path, and does the following:
+
+* Reads pid.
+* Uses Process.kill to send signal to the pid.
+* Removes pid file.
+* Handles possible exceptions and logs meaninful messages.
+
+Merb::Server.kill_pid (merb-core/lib/merb-core/server.rb)
+<pre>
+# Sends the provided signal to the process pointed at by the provided pid file.
+# @api private
+def kill_pid(sig, file)
+  begin
+    pid = pid_in_file(file)
+    Merb.logger.fatal! "Killing pid #{pid} with #{sig}"
+    Process.kill(sig, pid)
+    FileUtils.rm(file) if File.exist?(file)
+  rescue Errno::EINVAL
+    Merb.logger.fatal! "Failed to kill PID #{pid} with #{sig}: '#{sig}' is an invalid " \
+      "or unsupported signal number."
+  rescue Errno::EPERM
+    Merb.logger.fatal! "Failed to kill PID #{pid} with #{sig}: Insufficient permissions."
+  rescue Errno::ESRCH
+    FileUtils.rm file
+    Merb.logger.fatal! "Failed to kill PID #{pid} with #{sig}: Process is " \
+      "deceased or zombie."
+  rescue Errno::EACCES => e
+    Merb.logger.fatal! e.message
+  rescue Errno::ENOENT => e
+    # This should not cause abnormal exit, which is why 
+    # we do not use Merb.fatal but instead just log with max level.
+    Merb.logger.fatal! "Could not find a PID file at #{file}. " \
+      "Most likely the process is no longer running and the pid file was not cleaned up."
+  rescue Exception => e
+    if !e.is_a?(SystemExit)
+      Merb.logger.fatal! "Failed to kill PID #{pid.inspect} with #{sig.inspect}: #{e.message}"
+    end
   end
 end
 </pre>
