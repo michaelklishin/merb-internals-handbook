@@ -5,9 +5,10 @@ What you are going to learn in this chapter:
 * How Merb bootstraps itself.
 * How daemonization works.
 * How Merb manages pid files.
+* How Merb is started and stopped.
 * How Merb reacts to signals sent to it.
 
-This chapter is about plumbing, really low level things.
+This chapter is about framework plumbing, really low level things.
 It heavily intersects with certain parts of the next chapter.
 You can think of it as two phases of boot: this chapter describes
 early stage (bootstrap) and second one describes later stage
@@ -23,7 +24,7 @@ yet are simple enough even for beginners.
 
 So, command line options (or programmatically passed options) are
 parsed at this point and Merb is ready to start boot process.
-Right after that Merb does basically 4 things:
+Right after that Merb does basically 3 things:
 
 
 * Merb.environment and Merb.root are initialized from
