@@ -160,3 +160,113 @@ Since boot process involves several steps and is important part of
 the framework operation, it takes the whole next chapter.
 
 
+Now let's look at how pid file is stored removed. It's simple.
+When we store process id to the file (so other programs can
+figure out what Merb process id for certain port is), we
+follow simple convention:
+
+* Pid file contains one integer: current process id.
+* Pid file is stored to the same directory as logs.
+* Pid file is named as "merb.N.pid" where N is port number.
+* Master process (more about it in the next chapter) is named as "merb.master.pid".
+
+Merb::Server.store_details (merb-core/lib/merb-core/server.rb)
+<pre>
+# Stores a PID file on the filesystem.
+# This uses :pid_file options from configuration when provided
+# or merb.<port>.pid in log directory by default.
+#
+# ==== Parameters
+# port<~to_s>::
+#   The port of the Merb process to whom the the PID file belongs to.
+#
+# ==== Alternatives
+# If Merb::Config[:pid_file] has been specified, that will be used
+# instead of the port/socket based PID file.
+#
+# @api private
+def store_pid(port)
+  store_details(port)
+end
+</pre>
+
+Merb::Server.store_details (merb-core/lib/merb-core/server.rb)
+<pre>
+# Stores a PID file on the filesystem.
+# This uses :pid_file options from configuration when provided
+# or merb.<port/socket>.pid in log directory by default.
+#
+# ==== Parameters
+# port<~to_s>::
+#   The port of the Merb process to whom the the PID file belongs to.
+#
+# ==== Alternatives
+# If Merb::Config[:pid_file] has been specified, that will be used
+# instead of the port/socket based PID file.
+#
+# @api private
+def store_details(port = nil)
+  file = pid_file(port)
+  begin
+    FileUtils.mkdir_p(File.dirname(file))
+  rescue Errno::EACCES => e
+    Merb.fatal! "Failed to store Merb logs in #{File.dirname(file)}, " \
+      "permission denied. ", e
+  end
+  Merb.logger.warn! "Storing #{type} file to #{file}..." if Merb::Config[:verbose]
+    begin
+      File.open(file, 'w'){ |f| f.write(Process.pid.to_s) }
+    rescue Errno::EACCES => e
+      Merb.fatal! "Failed to access #{file}, permission denied.", e
+    end
+  end
+</pre>
+
+and here is aforementioned naming scheme implementation:
+
+Merb::Server.pid_file (merb-core/lib/merb-core/server.rb)
+<pre>
+# Gets the pid file for the specified port/socket.
+#
+# ==== Parameters
+# port<~to_s>::
+#   The port/socket of the Merb process to whom the the PID file belongs to.
+#
+# ==== Returns
+# String::
+#   Location of pid file for specified port. If clustered and pid_file option
+#   is specified, it adds the port/socket value to the path.
+#
+# @api private
+def pid_file(port)
+  pidfile = Merb::Config[:pid_file] || (Merb.log_path / "merb.%s.pid")
+  pidfile % port
+end
+</pre>
+
+* Merb calculates path to pid file using port it bound to and
+  simple conventions.
+* If pid file exists, it's removed from the file system.
+
+<pre>
+# Removes a PID file used by the server from the filesystem.
+# This uses :pid_file options from configuration when provided
+# or merb.<port/socket>.pid in log directory by default.
+#
+# ==== Parameters
+# port<~to_s>::
+#   The port of the Merb process to whom the the PID file belongs to.
+#
+# ==== Alternatives
+# If Merb::Config[:pid_file] has been specified, that will be used
+# instead of the port/socket based PID file.
+#
+# @api private
+def remove_pid_file(port)
+  pidfile = pid_file(port)
+  if File.exist?(pidfile)
+    Merb.logger.warn! "Removing pid file #{pidfile} (port/socket: #{port})..."
+    FileUtils.rm(pidfile)
+  end
+end
+</pre>
