@@ -5,6 +5,12 @@ served from this very moment. Now it's time to have a look how Merb uses Rack
 under the covers to greatly simplify support for variety of pluggable
 middleware, web servers and multiple application layouts.
 
+h2. A bit of warning.
+
+This chapter is *slightly* but outdated. Merb now supports streaming with
+Thin and Ebb thanks to middleware-level solution called stream wrapper.
+
+This chapter will eventually be updated.
 
 h2. What is Rack?
 
