@@ -18,14 +18,14 @@ Filters are added using before and after methods:
 
 [Merb::AbstractController.after]
 <pre><code>
-  def self.after(filter = nil, opts = {}, &block)
+def self.after(filter = nil, opts = {}, &block)
   add_filter(self._after_filters, filter || block, opts)
 end
 </code></pre>
 
 [Merb::AbstractController.before]
 <pre><code>
-  def self.before(filter = nil, opts = {}, &block)
+def self.before(filter = nil, opts = {}, &block)
   add_filter(self._before_filters, filter || block, opts)
 end
 </code></pre>

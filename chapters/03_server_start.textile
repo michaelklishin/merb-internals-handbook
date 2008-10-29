@@ -27,11 +27,9 @@ parsed at this point and Merb is ready to start boot process.
 Right after that Merb does basically 3 things:
 
 
-* Merb.environment and Merb.root are initialized from
-Merb configuration.
+* Merb.environment and Merb.root are initialized from Merb configuration.
 * Merb checks action you give it in arguments (kill, forced kill, fast redeploy, etc).
-* Merb does early stage work of managing pid files,
-  process privilegies and daemonization.
+* Merb does early stage work of managing pid files, process privilegies and daemonization.
 
 To find all the details, we need to start at Merb.start
 method. It can be found in merb-core/lib/merb-core.rb.
@@ -92,6 +90,7 @@ you can see some output.
 
 Now let's take a look at implementation of startup:
 Merb::Server.start (merb-core/lib/merb-core/server.rb):
+
 <pre><code>
 # Start a Merb server, in either foreground, daemonized or cluster mode.
 #
@@ -143,6 +142,7 @@ A couple of notes: child process chdirs to wherever Merb.root
 points to, pid file is removed on exit.
 
 Merb::Server#daemonize (merb-core/lib/merb-core/server.rb):
+
 <pre><code>
 # ==== Parameters
 # port<~to_s>:: The port of the Merb process to daemonize.
@@ -262,6 +262,7 @@ end
 </code></pre>
 
 Merb::Server.store_details (merb-core/lib/merb-core/server.rb)
+
 <pre><code>
 # Stores a PID file on the filesystem.
 # This uses :pid_file options from configuration when provided
@@ -296,6 +297,7 @@ def store_details(port = nil)
 and here is aforementioned naming scheme implementation:
 
 Merb::Server.pid_file (merb-core/lib/merb-core/server.rb)
+
 <pre><code>
 # Gets the pid file for the specified port/socket.
 #
@@ -364,6 +366,7 @@ It turns out not very. Here is how it works in the nutshell:
 * Read pids from pid files, send signal to the process with id in it.
 
 Merb::Server.kill_pid (merb-core/lib/merb-core/server.rb)
+
 <pre><code>
 # ==== Parameters
 # port<~to_s>:: The port of the Merb process to kill.
@@ -421,6 +424,7 @@ It takes signal to use nd pid file path, and does the following:
 * Handles possible exceptions and logs meaninful messages.
 
 Merb::Server.kill_pid (merb-core/lib/merb-core/server.rb)
+
 <pre><code>
 # Sends the provided signal to the process pointed at by the provided pid file.
 # @api private

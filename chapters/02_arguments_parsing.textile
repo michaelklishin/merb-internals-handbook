@@ -116,8 +116,7 @@ Server & environment options:
 
  * _reload\_classes_ specifies if Merb reloads application classes on each request or caches them.
 
- * _reload\_templates_ supposed to let you avoid templates inlining and reload them
-   on every request. NoOp at the moment of writing.
+ * _reload\_templates_ supposed to let you avoid templates inlining and reload them on every request. NoOp at the moment of writing.
 
  * _reload\_time_ is a period of class reload, defaults to 0.5 second.
 
@@ -155,6 +154,7 @@ $TESTING global variable is set to true, it resets environment to "test".
 Here is how it looks like in the source:
 
 Merb.testing? (lib/merb-core.rb):
+
 <pre><code>
 # ==== Returns
 # Boolean:: True if Merb environment is testing for instance,
