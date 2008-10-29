@@ -1,22 +1,22 @@
-== Start.
+h1. Start.
 
 There are couple of open source Merb book attempts but they all explain
 how to use Merb. As occasional Merb contributor I always wanted a book that
 really saves my time when it comes to understanding how things work inside
 of the framework. So I decided to write this little book about Merb internals.
 
-== Foreword.
+h2. Foreword.
 
 * Hacker's framework needs hacker's handbook.
 	 
-== What happens when you run merb executable.
+h2. What happens when you run merb executable.
 
 * Start.
 * Arguments parsing.
 * Server start.
 * Framework boot.
 
-== Then request comes in.
+h2. Then request comes in.
 
 * Merb on Rack.
 * Rackup.
@@ -28,20 +28,20 @@ of the framework. So I decided to write this little book about Merb internals.
 * Sessions.
 * Plugins.
 
-== Plugins architecture.
+h2. Plugins architecture.
 	 
 ** ORM plugins.
 ** Slices.
 ** Other plugins.
 
-== Development.
+h2. Development.
 
 * Overview.
 * Public and private specs.
 * Repository organization.
 
 
-== Foreword
+h2. Foreword
 
 Knowing how tools you use work under the covers is a huge win for every
 developer out there and Merb is small and clean enough for everyone to

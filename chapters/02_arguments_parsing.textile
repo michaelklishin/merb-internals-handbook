@@ -1,8 +1,8 @@
-== Arguments parsing.
+h1. Arguments parsing.
 
 Executable file merb that every Merb user have seen for sure, looks like this:
 
-<pre>
+<pre><code>
 #!/usr/bin/env ruby
 require "merb-core"
 
@@ -15,7 +15,7 @@ unless %w[-a --adapter -i --irb-console -r --script-runner].any? { |o| ARGV.inde
 end
 
 Merb.start
-</pre>
+</code></pre>
 
 This means that merb uses Mongrel adapter by default and fun starts in Merb.start.
 What does Merb.start do? 	It parses and sets up application config, then runs boot
@@ -32,7 +32,7 @@ configuration.
 Lets start with default configuration settings:
 
 Merb::Config.defaults (lib/merb-core/config.rb):
-<pre>
+<pre><code>
 # ==== Returns
 # Hash:: The defaults for the config.
 def defaults
@@ -52,7 +52,7 @@ def defaults
     :verbose                => false
   }
 end
-</pre>
+</code></pre>
 
 Although most of these options are well named and explain their purpose but they are not
 complete so let's be explicit and briefly describe each of options Merb core knows
@@ -155,7 +155,7 @@ $TESTING global variable is set to true, it resets environment to "test".
 Here is how it looks like in the source:
 
 Merb.testing? (lib/merb-core.rb):
-<pre>
+<pre><code>
 # ==== Returns
 # Boolean:: True if Merb environment is testing for instance,
 # Merb is running with RSpec, Test::Unit of other testing facility.
@@ -165,10 +165,10 @@ end
 
 # Set the environment if it hasn't already been set.
 Merb.environment ||= ENV['MERB_ENV'] || Merb::Config[:environment] || (Merb.testing? ? 'test' : 'development')
-</pre>
+</code></pre>
 
 
-Two more things that probably need some explaination are disabled components and
+Two more things that probably need some explanation are disabled components and
 deferred actions. Disabled components are parts or dependencies of Merb that you
 can leave out: like native JSON gem (for instance, if your Merb application does
 not use JSON at all, it makes no sense to waste memory). Actually the only component

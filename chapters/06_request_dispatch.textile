@@ -41,7 +41,7 @@ def call(env)
   end
   controller.rack_response
 end
-</pre></code>
+</code></pre>
 
 As you can see, dispatch wraps Rack environment into Merb::Request and passes
 it to Merb::Dispatcher.handle. Dispatcher used to do all the work itself but in
@@ -81,7 +81,7 @@ def handle
 rescue Object => exception
   dispatch_exception(exception)
 end
-</pre></code>
+</code></pre>
 
 Handling method first asks router for a route that matches request conditions
 (path, host, user agent, etc: with Merb's deferred routes anything in Rack
@@ -106,7 +106,7 @@ def dispatch_action(klass, action, status=200)
   end
   controller
 end
-</pre></code>
+</code></pre>
 
 Merb has AbstractController that knows nothing about the web but
 knows how to process filters and look up templates
@@ -141,7 +141,7 @@ def _dispatch(action)
   finalize_session
   @body
 end
-</pre></code>
+</code></pre>
 
 
 This is Merb::Controller#_dispatch. It calls session setup, processes filters and
@@ -163,7 +163,7 @@ mixin included into Merb::Controller on framework boot
 provide implementation for specific back end, like cookies,
 database, memcached or something else.
 
-AbstractController#_call_action is very simple and can be overriden
+AbstractController#_call_action is very simple and can be overridden
 in subclasses:
 
 [Merb::AbstractController#_call_action]
@@ -171,7 +171,7 @@ in subclasses:
 def _call_action(action)
   send(action)
 end
-</pre></code>
+</code></pre>
 
 Now back to Merb::Dispatcher for a little bit. What if action raises an exception?
 As you can see in Merb::Request#handle code above, it's rescued and re-dispatched
@@ -203,7 +203,7 @@ def dispatch_exception(exception)
     end
   end
 end
-</pre></code>
+</code></pre>
 
 Exception re-dispatch works like this:
 
@@ -226,4 +226,4 @@ Merb::Controller#rack_response method:
 def rack_response
   [status, headers, body]
 end
-</pre></code>
+</code></pre>

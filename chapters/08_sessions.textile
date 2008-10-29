@@ -271,7 +271,7 @@ end
 Merb::SessionContainer supposed to handle session setup and finalization. Lets discuss a bit what
 each of terms mean. Session setup is fetching session id from cookie and loading up session data
 from whatever you use for data storage: cookies, database, memcached, VM memory or
-something else, then assigning deserialized session object to request instance.
+something else, then assigning de-serialized session object to request instance.
 
 Session finalization means simply persisting session data. Session container and it's
 subclasses also handle session id operations: from uuid generation to changing to clearing.
@@ -279,7 +279,7 @@ subclasses also handle session id operations: from uuid generation to changing t
 Session is tied to request object, though controllers get delegating method session from SessionMixin.
 This is done to make sure you can use sessions in deferred routes.
 
-Merb::SessionContainer is a base class and supposed to be subclassed.
+Merb::SessionContainer is a base class and supposed to be sub-classed.
 <pre>
 <code>
 module Merb
@@ -736,10 +736,10 @@ Merb forces a 4K size limit on data stores in the session since
 this is what most popular browsers accept.
 
 Obviously, session data is marshalled and unmarshalled in case of
-cookie session. It's also base64 encrypted for integrify (and not
+cookie session. It's also base64 encrypted for integrity (and not
 for security through obscurity). Cookie session store uses
 OpenSSL HMAC and SHA1 algorithms for digest and is most likely
-to perfom worse than memory, memcached or database sessions.
+to perform worse than memory, memcached or database sessions.
 
 <pre>
 <code>
@@ -1205,7 +1205,7 @@ Now lets see how cookies put together in merb-core. Cookie inherits from Mash
 (Hash that can be accessed using both strings and symbols with no difference),
 also known as Hash with indifferent access.
 
-Generation of Set-Cokie header is called extraction in Merb and happens once
+Generation of Set-Cookie header is called extraction in Merb and happens once
 per request when headers are sent to the client.
 
 To provide access to cookie jar in the controller, CookieMixin is included into

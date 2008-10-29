@@ -8,7 +8,7 @@ types of filters, before and after filters, stored in arrays:
 <pre><code>
 class_inheritable_accessor :_before_filters, :_after_filters
 self._before_filters, self._after_filters = [], []
-</pre></code>
+</code></pre>
 
 So you can access filter lists directly if you really feel you need.
 Each filter is stored internally as a 2-tuple of symbol/proc and options.
@@ -21,13 +21,13 @@ Filters are added using before and after methods:
   def self.after(filter = nil, opts = {}, &block)
   add_filter(self._after_filters, filter || block, opts)
 end
-</pre></code>
+</code></pre>
 
 [Merb::AbstractController.before]
 <pre><code>
   def self.before(filter = nil, opts = {}, &block)
   add_filter(self._before_filters, filter || block, opts)
 end
-</pre></code>
+</code></pre>
 
 As you can see, both of them delegate to add_filter.

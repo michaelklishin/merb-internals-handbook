@@ -1,4 +1,4 @@
-== Framework boot.
+h1. Framework boot.
 
 To load all framework classes and start serving requests, Merb runs a number of callable
 objects known as bootloaders. Every bootloader in the chain has it's own purpose: some
@@ -29,7 +29,7 @@ class Merb::BootLoader::Logger < Merb::BootLoader
     end
   end
 end
-</pre></code>
+</code></pre>
 
 Bootloaders in Merb are run in certain order which is very important. You cannot load classes unless
 framework layout is not set, you cannot do rackup unless you set up logger, and so on. So bootloaders
@@ -54,7 +54,7 @@ def inherited(klass)
   subclasses << klass.to_s
   super
 end
-</pre></code>
+</code></pre>
 
 
 All said in paragraph above means plugin developers can hook into framework boot
@@ -101,7 +101,7 @@ def move_klass(klass, where)
     Merb::BootLoader.subclasses.insert(index + where, self.to_s)
   end
 end
-</pre></code>
+</code></pre>
 
 
 Here is a complete example of a bootloader from merb-slices:
@@ -179,13 +179,13 @@ Merb::Slices::Loader (merb-more/merb-slices/lib/merb-slices.rb):
     end
 
   end
-</pre></code>
+</code></pre>
 
 This before class method call places Merb::Slices::Loader bootloader before Merb::BootLoader::LoadClasses.
 
 Now once bootloaders chain is pretty much explained, let's have a look at each bootloder in merb-core in turn.
 
-== Merb::Bootloader::Logger initializes logger.
+h2. Merb::Bootloader::Logger initializes logger.
 
 Obviously logger has to be initialized early on so Merb::BootLoader::Logger is the first logger in the chain
 in merb-core. It uses logger-related parameters from Merb::Config:
@@ -209,7 +209,7 @@ class Merb::BootLoader::Logger < Merb::BootLoader
     end
   end
 end
-</pre></code>
+</code></pre>
 
 The Merb drops pid file if it's running daemonized or with several instances clustered:
 
@@ -227,7 +227,7 @@ class Merb::BootLoader::DropPidFile <  Merb::BootLoader
     end
   end
 end
-</pre></code>
+</code></pre>
 
 This does nothing fancy, just creates directory where pid file is supposed to be stored and
 writes own process identifier into that file:
@@ -253,7 +253,7 @@ def store_pid(port)
   puts "Created directory, writing process id..." if Merb::Config[:verbose]
   File.open(pidfile, 'w'){ |f| f.write("#{Process.pid}") }
 end
-</pre></code>
+</code></pre>
 
 One unanswered question here is how path to pid file is calculated. Let's see:
 
@@ -306,7 +306,7 @@ def pid_files
     Dir[Merb.log_path / "merb.*.pid"]
   end
  end
-</pre></code>
+</code></pre>
 
 It's pretty straightforward. If pid_file option is set up startup from command like (because at this point
 in boot process config file is not loaded yet), it is used. If not, Merb uses port of the instance to
@@ -328,7 +328,7 @@ class Merb::BootLoader::Defaults < Merb::BootLoader
     ])
   end
 end
-</pre></code>
+</code></pre>
 
 
 FIXME: explain it.
@@ -396,12 +396,12 @@ class Merb::BootLoader::BuildFramework < Merb::BootLoader
     end
   end
 end
-</pre></code>
+</code></pre>
 
 Default framework layout can be inferred from Merb::BootLoader.default_framework.
 
 Merb::BootLoader.default_framework (lib/merb-core/bootloader.rb):
-<pre>
+<pre><code>
 # Set up the default framework
 #
 # ==== Returns
@@ -424,7 +424,7 @@ def default_framework
   Merb.push_path(:image,        Merb.dir_for(:public) / "images", nil)
   nil
 end
-</pre>
+</code></pre>
 
 It would benefit you at this point to spend some time on helper methods, so
 lets get to it.
@@ -434,7 +434,7 @@ tells Merb where to look for models, views, router file and so forth. Actual loa
 is done by a separate bootloader that will be discussed later.
 
 Merb.push_path (lib/merb-core.rb):
-<pre>
+<pre><code>
 # ==== Examples
 # This method gives you a way to build up your own application
 # structure, for instance, to reflect the structure Rails
@@ -456,25 +456,25 @@ def push_path(type, path, file_glob = "**/*.rb")
   enforce!(type => Symbol)
   load_paths[type] = [path, file_glob]
 end
-</pre>
+</code></pre>
 
 Merb.dir_for is a reader for registered component paths.
 
 Merb.dir_for (lib/merb-core.rb):
-<pre>
+<pre><code>
 # ==== Parameters
 # type<Symbol>:: The type of path to retrieve directory for, e.g. :view.
 #
 # ==== Returns
 # String:: The directory for the requested type.
 def dir_for(type)  Merb.load_paths[type].first end
-</pre>
+</code></pre>
 
 
 Merb.root_path calculates path relative to Merb.root.
 
 Merb.root_path (lib/merb-core.rb):
-<pre>
+<pre><code>
 # ==== Parameters
 # *path::
 #   The relative path (or list of path components) to a directory under the
@@ -490,7 +490,7 @@ Merb.root_path (lib/merb-core.rb):
 #---
 # @public
 def root_path(*path) File.join(root, *path)                       end
-</pre>
+</code></pre>
 
 
 
@@ -528,7 +528,7 @@ it runs through dependencies list and loads them one by one using Kernel.load_de
 Again, because init file may specify additional logger configuration, logger is updated as soon as init file is loaded.
 
 Merb::BootLoader::Dependencies (lib/merb-core/bootloader.rb):
-<pre>
+<pre><code>
 class Merb::BootLoader::Dependencies < Merb::BootLoader
 
   # ==== Returns
@@ -693,10 +693,10 @@ class Merb::BootLoader::Dependencies < Merb::BootLoader
       nil
     end
 end
-</pre>
+</code></pre>
 
 h2. MixinSession bootloader.
-<pre>
+<pre><code>
 <code>
 class Merb::BootLoader::MixinSession < Merb::BootLoader
   # Mixin the session functionality; this is done before BeforeAppLoads
@@ -714,7 +714,7 @@ class Merb::BootLoader::MixinSession < Merb::BootLoader
 
 end
 </code>
-</pre>
+</code></pre>
 
 This simple bootloader loads up and mixes in modules into Merb::Controller and
 Merb::Request. Because it should be loaded before before_app_load hooks are run
@@ -732,7 +732,7 @@ It's a good way to do all kind of things before the app loads: from plugins conf
 to conditional `requires` (in case env-specific init files would not satisfy your needs).
 
 Merb::BootLoader::BeforeAppLoads (lib/merb-core/bootloader.rb):
-<pre>
+<pre><code>
 class Merb::BootLoader::BeforeAppLoads < Merb::BootLoader
 
   # Call any before_app_loads hooks that were registered via before_app_loads
@@ -741,7 +741,7 @@ class Merb::BootLoader::BeforeAppLoads < Merb::BootLoader
     Merb::BootLoader.before_load_callbacks.each { |x| x.call }
   end
 end
-</pre>
+</code></pre>
 
 
 h2. LoadClasses bootloader.
@@ -795,7 +795,7 @@ really care to know the underpinnings, and source says much more than any words.
 So we move on.
 
 Merb::BootLoader::LoadClasses (lib/merb-core/bootloader.rb):
-<pre>
+<pre><code>
 # Load all classes inside the load paths.
 #
 # This is used in conjunction with Merb::BootLoader::ReloadClasses to track
@@ -956,7 +956,7 @@ class Merb::BootLoader::LoadClasses < Merb::BootLoader
   end
 
 end
-</pre>
+</code></pre>
 
 
 h2. Templates.
@@ -980,7 +980,7 @@ filesystem at all once server is started.
 Bootloader looks simple:
 
 Merb::BootLoader::Templates (lib/merb-core/bootloader.rb):
-<pre>
+<pre><code>
 class Merb::BootLoader::Templates < Merb::BootLoader
   class << self
 
@@ -1015,13 +1015,13 @@ class Merb::BootLoader::Templates < Merb::BootLoader
     end
   end
 end
-</pre>
+</code></pre>
 
 The key part of inlining is inline_template that delegates to templating engine.
 Here's what it looks like for Erubis:
 
 Merb::Template::Erubis (lib/merb-core/controller/template.rb):
-<pre>
+<pre><code>
 # ==== Parameters
 # io<#path>:: An IO containing the full path of the template.
 # name<String>:: The name of the method that will be created.
@@ -1035,20 +1035,20 @@ def self.compile_template(io, name, mod)
   
   name
 end
-</pre>
+</code></pre>
 
 BlockAwareEruby mixes in block handling capabilities into Eruby so the answer
 lies in Erubis source code:
 
 Erubis::Evaluator::RubyEvaluator#def_method (erubis/lib/erubis/evaluator.rb):
-<pre>
+<pre><code>
 ## if object is an Class or Module then define instance method to it,
 ## else define singleton method to it.
 def def_method(object, method_name, filename=nil)
   m = object.is_a?(Module) ? :module_eval : :instance_eval
   object.__send__(m, "def #{method_name}; #{@src}; end", filename || @filename || '(erubis)')
 end
-</pre>
+</code></pre>
 
 
 
@@ -1068,7 +1068,7 @@ are keys and hash with the following keys is a value:
 
 
 Merb::BootLoader::MimeTypes (lib/merb-core/bootloader.rb):
-<pre>
+<pre><code>
 # Register the default MIME types:
 #
 # By default, the mime-types include:
@@ -1092,7 +1092,7 @@ class Merb::BootLoader::MimeTypes < Merb::BootLoader
     Merb.add_mime_type(:json, :to_json, %w[application/json text/x-json], :charset => "utf-8")
   end
 end
-</pre>
+</code></pre>
 
 
 h2. MixinCookies bootloader.
@@ -1101,7 +1101,7 @@ This simple bootloader mix in two more modules into Merb::Controller
 and Merb::Request. This makes default session store available and
 sets up session object on the request.
 
-<pre>
+<pre><code>
 <code>
 class Merb::BootLoader::Cookies < Merb::BootLoader
   
@@ -1113,7 +1113,7 @@ class Merb::BootLoader::Cookies < Merb::BootLoader
   
 end
 </code>
-</pre>
+</code></pre>
 
 
 h2. SetupSession bootloader.
@@ -1177,7 +1177,7 @@ This bootloader does a thing similar to what BeforeAppLoads bootloader does, but
 and, obviously, after application code is loaded.
 
 Merb::BootLoader::AfterAppLoads (lib/merb-core/bootloader.rb):
-<pre>
+<pre><code>
 class Merb::BootLoader::AfterAppLoads < Merb::BootLoader
 
   # Call any after_app_loads hooks that were registered via after_app_loads in
@@ -1186,7 +1186,7 @@ class Merb::BootLoader::AfterAppLoads < Merb::BootLoader
     Merb::BootLoader.after_load_callbacks.each {|x| x.call }
   end
 end
-</pre>
+</code></pre>
 
 
 h2. ChooseAdapter bootloader.
@@ -1201,7 +1201,7 @@ Swiftiplied Mongrel, Fast CGI and Webrick.
 Adapters are automatically loaded first time constant is required (using
 autoload).
 
-<pre>
+<pre><code>
 class Merb::BootLoader::ChooseAdapter < Merb::BootLoader
 
   # Choose the Rack adapter/server to use and set Merb.adapter.
@@ -1209,7 +1209,7 @@ class Merb::BootLoader::ChooseAdapter < Merb::BootLoader
     Merb.adapter = Merb::Rack::Adapter.get(Merb::Config[:adapter])
   end
 end
-</pre>
+</code></pre>
 
 
 h2. StartWorkerThread bootloader.
@@ -1217,7 +1217,7 @@ h2. StartWorkerThread bootloader.
 Merb has a background thread that executes tasks in it's queue. This bootloader
 starts this thread.
 
-<pre>
+<pre><code>
 class Merb::BootLoader::StartWorkerThread < Merb::BootLoader
 
   # Choose the Rack adapter/server to use and set Merb.adapter.
@@ -1225,7 +1225,7 @@ class Merb::BootLoader::StartWorkerThread < Merb::BootLoader
     Merb::Worker.new
   end
 end
-</pre>
+</code></pre>
 
 
 h2. RackUpApplication bootloader.
@@ -1237,7 +1237,7 @@ More on Rack machinery in chapter on Rack. If rackup file is not found, Merb
 uses default middleware bundled in merb-core.
 
 Merb::BootLoader::RackUpApplication (merb-core/lib/bootloader.rb):
-<pre>
+<pre><code>
   class Merb::BootLoader::RackUpApplication < Merb::BootLoader
   # Setup the Merb Rack App or read a rackup file located at
   # Merb::Config[:rackup] with the same syntax as the
@@ -1264,7 +1264,7 @@ Merb::BootLoader::RackUpApplication (merb-core/lib/bootloader.rb):
     end
   end
 end
-</pre>
+</code></pre>
 
 
 h2. ReloadClasses bootloader.
@@ -1275,7 +1275,7 @@ modification time and reloads classes in that file delegating to LoadClasses
 bootloader.
 
 Merb::BootLoader::ReloadClasses (lib/merb-core/bootloader.rb):
-<pre>
+<pre><code>
 class Merb::BootLoader::ReloadClasses < Merb::BootLoader
 
   class TimedExecutor
@@ -1318,17 +1318,17 @@ class Merb::BootLoader::ReloadClasses < Merb::BootLoader
     end
   end
 end
-</pre>
+</code></pre>
 
 
-h.2 ReloadTemplates bootloader.
+h2. ReloadTemplates bootloader.
 
 This bootloader is supposed to reload templates but at the moment of writing it
 just sets Merb::Config[:reload_templates] to true if environment Merb
 application runs in is development.
 
 Merb::BootLoader::ReloadTemplates (lib/merb-core/bootloader.rb):
-<pre>
+<pre><code>
 class Merb::BootLoader::ReloadTemplates < Merb::BootLoader
 
   # Reloads all templates if the reload_templates key has been set in config.
@@ -1338,4 +1338,4 @@ class Merb::BootLoader::ReloadTemplates < Merb::BootLoader
     end
   end
 end
-</pre>
+</code></pre>

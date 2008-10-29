@@ -31,7 +31,7 @@ developers universal unified interface.
 
 h2. Get yourself familiar with roots.
 
-I'd highly recomment reading "original WSGI
+I'd highly re-comment reading "original WSGI
 PEP":http://www.python.org/dev/peps/pep-0333 before you continue reading this
 chapter.
 
@@ -68,12 +68,12 @@ application if necessary. You can think of Rack middleware as of highly reusable
 filters that run outside of framework dispatch process.
 
 Frameworks like Django and Pylons use middleware for all sorts of stuff, from
-conditional get support to csrf attacks protecttion to session setup and finalization.
+conditional get support to csrf attacks protection to session setup and finalization.
 
 
 h2. Adapters.
 
-Rack adapters connect web server intefaces with Merb Rack application that takes
+Rack adapters connect web server interfaces with Merb Rack application that takes
 the environment and passes it to Merb dispatcher. Since different web servers
 have different APIs, Merb comes with a bunch of adapters: for Mongrel, Thin,
 Ebb, Thin with Thin-Turbo backend, Evented Mongrel, Swiftiplied Mongrel, FastCGI, CGI, Webrick.
@@ -317,7 +317,7 @@ module Merb
     end
   end
 end
-</pre></code>
+</code></pre>
 
 What this does is starts Thin using host/port or socket and passes it an instance of Merb Rack application
 that knows how to pass incoming requests to Merb dispatcher. Pretty simple.
@@ -356,7 +356,7 @@ Here is Merb Rack application I referred to a number of times already:
     end # Application
   end # Rack
 end # Merb
-</pre></code>
+</code></pre>
 
 It has one addition over vanilla Rack application: deferred? method. This is used by event-driven servers
 (currently Thin and Ebb) to figure out that request should be deferred (run in a thread) instead of running
@@ -373,7 +373,7 @@ Short cut from Thin::Connection source code:
 def threaded?
   @threaded || (@app.respond_to?(:deferred?) && @app.deferred?(@request.env))
 end
-</pre></code>
+</code></pre>
 
 And yes, this means web server authors should be aware of this feature since
 it goes beyong Rack specification, but at the time of writing (August 2008)
@@ -401,7 +401,7 @@ app = Rack::Builder.new {
     run Rack::Lobster.new
   end
 }
-</pre></code>
+</code></pre>
 
 It stacks two middleware components, Rack::CommonLogger and Rack::ShowExceptions,
 and maps URL /lobster to Rack::Lobster application (that shows and
@@ -467,7 +467,7 @@ Merb::BootLoader::RackUpApplication (merb-core/lib/bootloader.rb):
     end
   end
 end
-</pre></code>
+</code></pre>
 
 
 What it does is setting up Rack applications stack web server is going to use.
