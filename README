@@ -1,0 +1,32 @@
+h1. Foreword from author.
+
+Knowing how tools you use work under the covers is a huge win for every
+developer out there and Merb is small and clean enough for everyone to
+understand it in short period of time. You can learn a lot about HTTP,
+web frameworks design and even hidden gems of Ruby web servers
+(how many of you know that Thin can actually serve requests in
+threads and not block the event loop?).
+
+Understanding Merb helps a lot in understanding Ruby on Rails,
+Django, TurboGears and (to some extent)
+virtually any other framework out there. I encourage you read
+this little handbook 10 times before you call yourself familiar
+with Merb. I must confess I have no will to do so myself. But
+you can do better.
+
+Once you are done, dive into Django, Rails or whatever it may
+be. Go to project tracker, find a ticket that relates to some
+area you feel you know best and fix the problem. Contribute
+a patch, make the tool that is freely available to you better,
+understand what it takes to give your work away for free to the
+community and why open source is such a wild fire Internet
+is built upon.
+
+And, by the way. If you find this book useful, do me a favor.
+I need no money from you. Just take my advice seriously.
+Read source code of projects that you rely on, whether it is
+Django, Merb, Nginx, DataMapper, Twisted, PostgreSQL or Matz's Ruby VM. Understand
+how they work, get better, and maybe even do a small contribution.
+But never stop exploring more and more. This is the only
+exercise you need to become a better software engineer. At least,
+this is what I learn again and again.
