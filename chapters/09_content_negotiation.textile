@@ -1,0 +1,205 @@
+h1. Content negotiation.
+
+Content negotiation is a term used in HTTP specification. HTTP client (like
+a browser) and HTTP server (not really a server itself but applications
+that server serves) negotiate over content type or format which server
+will provide to the client as a response.
+
+In other words, whether server sends back HTML, JSON, XML, iCal, YAML
+or some other format (including video, images, audio and so forth).
+
+Here Merb borrows idea of "formats" from Ruby on Rails. Merb applications
+provide one or many representation of the same resource (again, this is
+all from HTTP specification) and representation client asks for is
+known as "format" in request cycle.
+
+Magic that makes provides API and .xml, .json and other suffixes in
+resource routes run is spread between 2 parts of the code base.
+One is content negotiation module itself that figures out what
+format is the most appropriate for the client (depending on number of
+factors covered later in this chapter), and another is formats registry
+that keeps track of formats registered in the application.
+
+Format is just a synonim for content type that human beings can
+easily remember. We mostly care about if it is JSON or XML rather
+than if it is application/xml or application/json. Every format
+has associated content types string, a method name Merb uses when
+it tries to present entities in the application in the format
+client requested, and... this is pretty much it.
+
+If you return to boot chapter, you may find that you already
+seen a bit of code in Merb core that has something to deal with
+content negotiation. It's in MimeTypes bootloader that sets up
+default formats Merb applications may provide:
+
+* html
+* json
+* javascript
+* xml
+* yaml
+* text
+
+They all have different Accept header values associated with them.
+Accept header is what is used by the framework to figure out
+what to serve to the client. No surprises here.
+
+What is really interesting to Merb hacker here is that part
+that performs content negotiation. It is a Merb::ResponderMixin
+that does the job. It is mixed into controllers and is
+resposible for keeping track of provided formats, as well as
+figuring out requested format name.
+
+Code lives in lib/merb-core/controller/mixins/responder.rb.
+Here is the method that takes a request and returns requested
+format name:
+
+<code>
+<pre>
+def _perform_content_negotiation
+  if (fmt = params[:format]) && !fmt.empty?
+    accepts = [fmt.to_sym]
+  elsif request.accept =~ %r{^(text/html|\*/\*)} && _provided_formats.first == :html
+    # Handle the common case of text/html and :html provided after checking :format
+    return :html
+  else
+    accepts = Responder.parse(request.accept).map {|t| t.to_sym}.compact
+  end
+  
+  # no need to make a bunch of method calls to _provided_formats
+  provided_formats = _provided_formats
+  
+  specifics = accepts & provided_formats
+  return specifics.first unless specifics.length == 0
+  return provided_formats.first if accepts.include?(:all) && !provided_formats.empty?
+  
+  message  = "A format (%s) that isn't provided (%s) has been requested. "
+  message += "Make sure the action provides the format, and be "
+  message += "careful of before filters which won't recognize "
+  message += "formats provided within actions."
+  raise Merb::ControllerExceptions::NotAcceptable,
+    (message % [accepts.join(', '), provided_formats.join(', ')])
+end
+</pre>
+</code>
+
+Content negotiation involves a sequnce of steps:
+1. if params[:format] is there, and provided, it is used
+2. Otherwise Accept header is parsed
+3. If it's */*, the first provided format is used
+4. If not, Merb looks for one that is provided, in order of request
+5. 406 status is set and exception is raised if none found.
+
+406 is Not Acceptable.
+
+Another use of registered formats is to set content type header
+when response is rendered:
+<code>
+<pre>
+def content_type=(type)
+  unless Merb.available_mime_types.has_key?(type)
+    raise Merb::ControllerExceptions::NotAcceptable.new("Unknown content_type for response: #{type}") 
+  end
+
+  @_content_type = type
+
+  mime = Merb.available_mime_types[type]
+  
+  headers["Content-Type"] = mime[:content_type]
+  
+  # merge any format specific response headers
+  mime[:response_headers].each { |k,v| headers[k] ||= v }
+  
+  # if given, use a block to finetune any runtime headers
+  mime[:response_block].call(self) if mime[:response_block]
+
+  @_content_type
+end
+</pre>
+</code>
+
+Note that in 1.0.x every single rendering method uses content_type=
+method internally, so rendering automatically means setting content type
+header and if you expect to set that header manually, don't be
+surprised.
+
+Accept header parsing is not really elegant but may be of interest
+to the reader so I provide two tiny classes that do the job. It is
+in the same responder.rb.
+
+<code>
+<pre>
+class Responder
+  def self.parse(accept_header)
+    headers = accept_header.split(/,/)
+    idx, list = 0, []
+    while idx < headers.size
+      list << AcceptType.new(headers[idx], idx)
+      idx += 1
+    end
+    list.sort
+  end
+end
+
+class AcceptType
+  attr_reader :media_range, :quality, :index, :type, :sub_type
+  def initialize(entry,index)
+    @index = index
+    
+    entry =~ /\s*([^;\s]*)\s*(;\s*q=\s*(.*))?/
+    @media_range, quality = $1, $3
+    
+    @type, @sub_type = @media_range.split(%r{/})
+    (quality ||= 0.0) if @media_range == "*/*"
+    @quality = quality ? (quality.to_f * 100).to_i : 100
+    @quality *= (mime && mime[:default_quality] || 1)
+  end
+  
+  def <=>(entry)
+    if entry.quality == quality
+      @index <=> entry.index
+    else
+      entry.quality <=> @quality
+    end
+  end
+
+  def eql?(entry)
+    synonyms.include?(entry.media_range)
+  end
+
+  def ==(entry); eql?(entry); end
+
+  def hash; super_range.hash; end
+
+  def synonyms
+    return @syns if @syns
+    if _mime = mime
+      @syns = _mime[:accepts]
+    else
+      @syns = []
+    end
+  end
+  
+  def mime
+    @mime ||= Merb.available_mime_types[Merb::ResponderMixin::MIMES[@media_range]]
+  end
+
+  def super_range
+    synonyms.first || @media_range
+  end
+
+  def to_sym
+    Merb.available_mime_types.select{|k,v| 
+      v[:accepts] == synonyms || v[:accepts][0] == synonyms[0]}.flatten.first
+  end
+
+  def to_s
+    @media_range
+  end
+end
+</pre>
+</code>
+
+h2. Where to look next.
+
+Next thing you may want to look at is all the gory details
+of rendering engine.
