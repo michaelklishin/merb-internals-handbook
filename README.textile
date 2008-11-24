@@ -1,5 +1,7 @@
 h1. Foreword from author.
 
+h2. Why a hacker's handbook.
+
 Knowing how tools you use work under the covers is a huge win for every
 developer out there and Merb is small and clean enough for everyone to
 understand it in short period of time. You can learn a lot about HTTP,
@@ -7,12 +9,16 @@ web frameworks design and even hidden gems of Ruby web servers
 (how many of you know that Thin can actually serve requests in
 threads and not block the event loop?).
 
+h2. But what if I do not use Merb?
+
 Understanding Merb helps a lot in understanding Ruby on Rails,
 Django, TurboGears and (to some extent)
 virtually any other framework out there. I encourage you read
 this little handbook 10 times before you call yourself familiar
 with Merb. I must confess I have no will to do so myself. But
 you can do better.
+
+h2. Move on, and never stop.
 
 Once you are done, dive into Django, Rails or whatever it may
 be. Go to project tracker, find a ticket that relates to some
@@ -30,3 +36,31 @@ how they work, get better, and maybe even do a small contribution.
 But never stop exploring more and more. This is the only
 exercise you need to become a better software engineer. At least,
 this is what I learn again and again.
+
+h2. This handbook sucks balls!
+
+You can always me email your feedback to michael.s.klishin at
+Gmail domain, or PM michaelklishin at GitHub.
+
+h2. Contributing.
+
+If you want to contribute, fork this repository and go ahead.
+Pull requests on GitHub are more than welcome. If you use
+patches, make sure you use git format-patch and your patch
+has author name and email address on it.
+
+Do keep in mind that my native language is Russian and thus,
+my English may sound weird to native ear. I am sure it does.
+
+I want to thank the following people:
+
+* Matt Aimonetti contributed a lot of grammar and spelling fixes early on.
+* Robert Evans contributed a lot of fixes related to formatting.
+* Jack Dempsey did a quick read-through and pointed me where source
+  samples in the book needed update.
+* Yehuda Katz spent unbelievable amount of time trying to polish my
+  English skills on the IRC, always asking me to not take offense.
+* Oleg Andreev does insanely cool stuff with Ruby on a daily basis
+  and helps me polish my arguing skills.
+* Emacs contributors provided me with a blessed text editor I can
+  no longer work without.
