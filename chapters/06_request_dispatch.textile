@@ -22,66 +22,16 @@ h2. Briefly.
 
 h2. Details.
 Once Rack environment is passed into Merb Rack application, dispatch
-process is started.
+process is started. Initial code in Merb that is executed after
+web server passes a request to the framework is, you guessed it,
+Rack application. By default it is Merb::Rack::Application#call
+in lib/merb-core/rack/application.rb.
 
-[Merb::Rack::Application#call]
-<pre><code>
-def call(env) 
-  begin
-    controller = ::Merb::Dispatcher.handle(Merb::Request.new(env))
-  rescue Object => e
-    return [500, {Merb::Const::CONTENT_TYPE => "text/html"}, e.message + "<br/>" + e.backtrace.join("<br/>")]
-  end
-  Merb.logger.info "\n\n"
-  Merb.logger.flush
-
-  unless controller.headers[Merb::Const::DATE]
-    require "time"
-    controller.headers[Merb::Const::DATE] = Time.now.rfc2822.to_s
-  end
-  controller.rack_response
-end
-</code></pre>
-
-As you can see, dispatch wraps Rack environment into Merb::Request and passes
+Dispatcher wraps Rack environment into Merb::Request and passes
 it to Merb::Dispatcher.handle. Dispatcher used to do all the work itself but in
 Merb 0.9.5 development cycle it started to delegate to Merb::Request#handle.
 
-Here it is:
-
-[Merb::Request#handle]
-<pre><code>
-def handle
-  start = Time.now
-  Merb.logger.info "Started request handling: #{start.to_s}"
-
-  find_route!
-  return redirect if redirects?
-  
-  klass = controller
-  Merb.logger.debug("Routed to: #{params.inspect}")
-  
-  unless klass < Controller
-    raise NotFound, 
-      "Controller '#{klass}' not found.\n" \
-      "If Merb tries to find a controller for static files, " \
-      "you may need to check your Rackup file, see the Problems " \
-      "section at: http://wiki.merbivore.com/pages/rack-middleware"
-  end
-
-  if klass == Application
-    raise NotFound, "The 'Application' controller has no public actions"
-  end
-
-  controller = dispatch_action(klass, params[:action])
-  controller._benchmarks[:dispatch_time] = Time.now - start
-  Merb.logger.info controller._benchmarks.inspect
-  Merb.logger.flush
-  controller
-rescue Object => exception
-  dispatch_exception(exception)
-end
-</code></pre>
+Merb::Request is in lib/merb-core/dispatch/request.rb.
 
 Handling method first asks router for a route that matches request conditions
 (path, host, user agent, etc: with Merb's deferred routes anything in Rack
@@ -92,7 +42,7 @@ filters.
 If route is not redirecting, action dispatch is started by
 Merb::Request#dispatch_action. It instantiates the controller, passes in
 the request itself and calls _dispatch on the controller synchronized
-with mutex if needed.
+with mutex if configured to do so.
 
 [Merb::AbstractController#dispatch_action]
 <pre><code>
@@ -107,6 +57,13 @@ def dispatch_action(klass, action, status=200)
   controller
 end
 </code></pre>
+
+Synchronization is needed for non-threadsafe libraries that may
+be used. DataMapper and ActiveRecord 2.2 are told to be thread-safe
+so you can turn the mutex lock off for applications that use it
+as long as you write a thread-safe code yourelf.
+
+h2. Controllers.
 
 Merb has AbstractController that knows nothing about the web but
 knows how to process filters and look up templates
@@ -227,3 +184,11 @@ def rack_response
   [status, headers, body]
 end
 </code></pre>
+
+
+h2. Where to look next.
+
+Since we covered the whole dispatch process here briefly,
+you may wonder where to look next. The answer is into different
+components that put Merb controllers together, and into specific
+plugins or application code that is executed along the way.
