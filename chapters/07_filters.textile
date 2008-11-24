@@ -31,3 +31,15 @@ end
 </code></pre>
 
 As you can see, both of them delegate to add_filter.
+
+h2. Tricky moments.
+
+Filters information in 1.0 was stored in a Hash so it used
+to distinguish access by symbol key and by string key. Which
+is quite embarrasing. So in 1.0.x and 1.x series this has
+changed to using Mash, Hash with indifferent access.
+
+h2. Where to look next.
+
+Once you are done with filters, most intersting parts to you
+are session machinery and content negotiation aka "formats".
