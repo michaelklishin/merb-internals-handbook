@@ -188,150 +188,25 @@ Now once bootloaders chain is pretty much explained, let's have a look at each b
 h2. Merb::Bootloader::Logger initializes logger.
 
 Obviously logger has to be initialized early on so Merb::BootLoader::Logger is the first logger in the chain
-in merb-core. It uses logger-related parameters from Merb::Config:
+in merb-core. It uses logger-related parameters from Merb::Config.
 
-<pre><code>
-# Set up the logger.
-#
-# Place the logger inside of the Merb log directory (set up in
-# Merb::BootLoader::BuildFramework)
-class Merb::BootLoader::Logger < Merb::BootLoader
+h2. Merb::BootLoader::DropPidFile.
 
-  # Sets Merb.logger to a new logger created based on the config settings.
-  def self.run
-    Merb.logger = Merb::Logger.new(Merb.log_file, Merb::Config[:log_level], Merb::Config[:log_delimiter], Merb::Config[:log_auto_flush])
-    print_warnings
-  end
-  
-  def self.print_warnings
-    if Gem::Version.new(Gem::RubyGemsVersion) < Gem::Version.new("1.1")
-      Merb.logger.warn! "Merb requires Rubygems 1.1 and later. Please upgrade RubyGems with gem update --system."
-    end
-  end
-end
-</code></pre>
+The Merb drops pid file (if it's running daemonized or with several instances clustered).
+DropPidFile bootloader does nothing fancy, just creates directory where pid file is supposed to be stored and
+writes own process identifier into that file using Merb::Server.store_pid (lib/merb-core/server.rb).
 
-The Merb drops pid file if it's running daemonized or with several instances clustered:
-
-<pre><code>
-# Stores pid file.
-#
-# Only run if daemonization or clustering options specified on start.
-# Port is taken from Merb::Config and must be already set at this point.
-class Merb::BootLoader::DropPidFile <  Merb::BootLoader
-  class << self
-
-    # Stores a PID file if Merb is running daemonized or clustered.
-    def run
-      Merb::Server.store_pid(Merb::Config[:port]) if Merb::Config[:daemonize] || Merb::Config[:cluster]
-    end
-  end
-end
-</code></pre>
-
-This does nothing fancy, just creates directory where pid file is supposed to be stored and
-writes own process identifier into that file:
-
-Merb::Server.store_pid (lib/merb-core/server.rb):
-
-<pre><code>
-# Stores a PID file on the filesystem.
-# This uses :pid_file options from configuration when provided
-# or merb.<port>.pid in log directory by default.
-#
-# ==== Parameters
-# port<~to_s>::
-#   The port of the Merb process to whom the the PID file belongs to.
-#
-# ==== Alternatives
-# If Merb::Config[:pid_file] has been specified, that will be used
-# instead of the port based PID file.
-def store_pid(port)
-  pidfile = pid_file(port)
-  puts "Storing pid file to #{pidfile}..."
-  FileUtils.mkdir_p(File.dirname(pidfile)) unless File.directory?(File.dirname(pidfile))
-  puts "Created directory, writing process id..." if Merb::Config[:verbose]
-  File.open(pidfile, 'w'){ |f| f.write("#{Process.pid}") }
-end
-</code></pre>
-
-One unanswered question here is how path to pid file is calculated. Let's see:
-
-Merb::Server.store_pid (lib/merb-core/server.rb):
-
-<pre><code>
-# Gets the pid file for the specified port.
-#
-# ==== Parameters
-# port<~to_s>::
-#   The port of the Merb process to whom the the PID file belongs to.
-#
-# ==== Returns
-# String::
-#   Location of pid file for specified port. If clustered and pid_file option
-#   is specified, it adds the port value to the path.
-def pid_file(port)
-  if Merb::Config[:pid_file]
-    pidfile = Merb::Config[:pid_file]
-    if Merb::Config[:cluster]
-      ext = File.extname(Merb::Config[:pid_file])
-      base = File.basename(Merb::Config[:pid_file], ext)
-      dir = File.dirname(Merb::Config[:pid_file])
-      File.join(dir, "#{base}.#{port}#{ext}")
-    else
-      Merb::Config[:pid_file]
-    end
-  else
-    pidfile = Merb.log_path / "merb.#{port}.pid"
-    Merb.log_path / "merb.#{port}.pid"
-  end
-end
-
-# Get a list of the pid files.
-#
-# ==== Returns
-# Array::
-#   List of pid file paths. If not clustered, array contains a single path.
-def pid_files
-  if Merb::Config[:pid_file]
-    if Merb::Config[:cluster]
-      ext = File.extname(Merb::Config[:pid_file])
-      base = File.basename(Merb::Config[:pid_file], ext)
-      dir = File.dirname(Merb::Config[:pid_file])
-      Dir[dir / "#{base}.*#{ext}"]
-    else
-      [ Merb::Config[:pid_file] ]
-    end
-  else
-    Dir[Merb.log_path / "merb.*.pid"]
-  end
- end
-</code></pre>
-
-It's pretty straightforward. If pid_file option is set up startup from command like (because at this point
+If pid_file option is set up startup from command like (because at this point
 in boot process config file is not loaded yet), it is used. If not, Merb uses port of the instance to
 make pid file name unique and places it under log directory.
 
-Second method shows how pid files list is collected using range of ports Merb cluster uses.
-
 Next bootloader sets up "some useful defaults" as docstring says:
 
-Merb::Bootloader (lib/merb-core/bootloader.rb):
-
-<pre><code>
-# Setup some useful defaults
-class Merb::BootLoader::Defaults < Merb::BootLoader
-  def self.run
-    Merb::Request.http_method_overrides.concat([
-      proc { |c| c.params[:_method] },
-      proc { |c| c.env['HTTP_X_HTTP_METHOD_OVERRIDE'] }
-    ])
-  end
-end
-</code></pre>
-
-
-FIXME: explain it.
+Code is in Merb::Bootloader::Defaults (lib/merb-core/bootloader.rb).
+In 1.0 and early 1.x branch Merb only has a few procedures that
+help Merb override HTTP method using _method parameters or HTTP_X_HTTP_METHOD_OVERRIDE
+header value (if it is present). Leaving this bootloader out will
+cause RESTful routing breakages.
 
 h2. BuildFramework bootloader.
 
@@ -359,28 +234,31 @@ Source code of that bootloader is very simple:
 Merb::BootLoader::BuildFramework (lib/merb-core/bootloader.rb):
 
 <pre><code>
-# ==== Example
-#   Merb::Config[:framework] = {
-#     :view   => Merb.root / "views",
-#     :model  => Merb.root / "models",
-#     :lib    => Merb.root / "lib",
-#     :public => [Merb.root / "public", nil]
-#     :router => [Merb.root / "config", "router.rb"]
-#   }
-#
-# That will set up a flat directory structure with the config files and
-# controller files under Merb.root, but with models, views, and lib with their
-# own folders off of Merb.root.
 class Merb::BootLoader::BuildFramework < Merb::BootLoader
   class << self
 
     # Builds the framework directory structure.
+    #
+    # ==== Returns
+    # nil
+    #
+    # :api: plugin
     def run
+      $:.push Merb.root unless Merb.root == File.expand_path(Dir.pwd)
       build_framework
+      nil
     end
 
-    # This method should be overridden in init.rb before Merb.start to set up
-    # a different framework structure.
+    # Sets up merb paths to support the app's file layout. First, config/framework.rb is checked,
+    # next we look for Merb.root/framework.rb, finally we use the default merb layout (Merb::BootLoader.default_framework)
+    #
+    # This method can be overridden to support other application layouts.
+    #
+    # ==== Returns
+    # nil
+    #
+    # :api: plugin
+    # @overridable
     def build_framework
       if File.exists?(Merb.root / "config" / "framework.rb")
         require Merb.root / "config" / "framework"
@@ -393,6 +271,7 @@ class Merb::BootLoader::BuildFramework < Merb::BootLoader
         path = Array(path)
         Merb.push_path(name, path.first, path.length == 2 ? path[1] : "**/*.rb")
       end
+      nil
     end
   end
 end
@@ -403,21 +282,18 @@ Default framework layout can be inferred from Merb::BootLoader.default_framework
 Merb::BootLoader.default_framework (lib/merb-core/bootloader.rb):
 
 <pre><code>
-# Set up the default framework
-#
-# ==== Returns
-# nil
-#
-#---
-# @public
 def default_framework
   %w[view model helper controller mailer part].each do |component|
     Merb.push_path(component.to_sym, Merb.root_path("app/#{component}s"))
   end
-  Merb.push_path(:application,  Merb.root_path("app/controllers/application.rb"))
+  Merb.push_path(:application,  Merb.root_path("app" / "controllers" / "application.rb"))
   Merb.push_path(:config,       Merb.root_path("config"), nil)
   Merb.push_path(:router,       Merb.dir_for(:config), (Merb::Config[:router_file] || "router.rb"))
+  # IMPORTANT! Enabling autoload here for lib breaks most of Rake tasks
+  # in Merb repository. If you want to enable autoload by default,
+  # do it in the generated init.rb file: Merb.push_path(Merb.root_path("lib"), "*/*.rb")
   Merb.push_path(:lib,          Merb.root_path("lib"), nil)
+  Merb.push_path(:merb_session, Merb.root_path("merb" / "session"))
   Merb.push_path(:log,          Merb.log_path, nil)
   Merb.push_path(:public,       Merb.root_path("public"), nil)
   Merb.push_path(:stylesheet,   Merb.dir_for(:public) / "stylesheets", nil)
@@ -529,6 +405,9 @@ need no load init file. You can tell Merb not load it using Merb.disable(:initfi
 When init files (init.rb and env-specific file from config/environments) are loaded, and application dependencies are known to Merb,
 it runs through dependencies list and loads them one by one using Kernel.load_dependency.
 Again, because init file may specify additional logger configuration, logger is updated as soon as init file is loaded.
+
+Understanding how this bootloader works is crucial for general understanding of
+Merb boot process.
 
 Merb::BootLoader::Dependencies (lib/merb-core/bootloader.rb):
 <pre><code>
@@ -797,169 +676,8 @@ This particular bootloader is probably a subject of interest of people who
 really care to know the underpinnings, and source says much more than any words.
 So we move on.
 
-Merb::BootLoader::LoadClasses (lib/merb-core/bootloader.rb):
-<pre><code>
-# Load all classes inside the load paths.
-#
-# This is used in conjunction with Merb::BootLoader::ReloadClasses to track
-# files that need to be reloaded, and which constants need to be removed in
-# order to reload a file.
-#
-# This also adds the model, controller, and lib directories to the load path,
-# so they can be required in order to avoid load-order issues.
-class Merb::BootLoader::LoadClasses < Merb::BootLoader
-  LOADED_CLASSES = {}
-  MTIMES = {}
-
-  class << self
-
-    # Load all classes from Merb's native load paths.
-    def run
-      # Add models, controllers, helpers and lib to the load path
-      $LOAD_PATH.unshift Merb.dir_for(:model)
-      $LOAD_PATH.unshift Merb.dir_for(:controller)
-      $LOAD_PATH.unshift Merb.dir_for(:lib)
-      $LOAD_PATH.unshift Merb.dir_for(:helper)
-
-      # Load application file if it exists - for flat applications
-      load_file Merb.dir_for(:application) if File.file?(Merb.dir_for(:application))
-      
-      # Load classes and their requirements
-      Merb.load_paths.each do |component, path|
-        next unless path.last && component != :application
-        load_classes(path.first / path.last)
-      end
-
-      Merb::Controller.send :include, Merb::GlobalHelpers
-    end
-    
-    # ==== Parameters
-    # file<String>:: The file to load.
-    def load_file(file)
-      klasses = ObjectSpace.classes.dup
-      load file
-      LOADED_CLASSES[file] = ObjectSpace.classes - klasses
-      MTIMES[file] = File.mtime(file)
-    end
-    
-    # Load classes from given paths - using path/glob pattern.
-    #
-    # *paths<Array>::
-    #   Array of paths to load classes from - may contain glob pattern
-    def load_classes(*paths)
-      orphaned_classes = []
-      paths.flatten.each do |path|
-        Dir[path].each do |file|
-          begin
-            load_file file
-          rescue NameError => ne
-            orphaned_classes.unshift(file)
-          end
-        end
-      end
-      load_classes_with_requirements(orphaned_classes)
-    end
-
-    # ==== Parameters
-    # file<String>:: The file to reload.
-    def reload(file)
-      remove_file(file) { |f| load_file(f) }
-    end
-    
-    # Reload the router to regenerate all routes.
-    def reload_router!
-      if File.file?(router_file = Merb.dir_for(:router) / Merb.glob_for(:router))
-        Merb::Router.reset!
-        reload router_file
-      end
-    end
-    
-    # ==== Parameters
-    # file<String>:: The file to remove classes for.
-    # &block:: A block to call with the file that has been removed.
-    def remove_file(file, &block)
-      Merb.klass_hashes.each {|x| x.protect_keys!}
-      if klasses = LOADED_CLASSES.delete(file)
-        klasses.each { |klass| remove_constant(klass) unless klass.to_s =~ /Router/ }
-      end
-      yield file if block_given?
-      Merb.klass_hashes.each {|x| x.unprotect_keys!}
-    end
-
-    # ==== Parameters
-    # const<Class>:: The class to remove.
-    def remove_constant(const)
-      # This is to support superclasses (like AbstractController) that track
-      # their subclasses in a class variable. Classes that wish to use this
-      # functionality are required to alias it to _subclasses_list. Plugins
-      # for ORMs and other libraries should keep this in mind.
-      superklass = const
-      until (superklass = superklass.superclass).nil?
-        if superklass.respond_to?(:_subclasses_list)
-          superklass.send(:_subclasses_list).delete(klass)
-          superklass.send(:_subclasses_list).delete(klass.to_s)
-        end
-      end
-
-      parts = const.to_s.split("::")
-      base = parts.size == 1 ? Object : Object.full_const_get(parts[0..-2].join("::"))
-      object = parts[-1].to_s
-      begin
-        base.send(:remove_const, object)
-        Merb.logger.debug("Removed constant #{object} from #{base}")
-      rescue NameError
-        Merb.logger.debug("Failed to remove constant #{object} from #{base}")
-      end
-    end
-    
-    private
-
-    # "Better loading" of classes.  If a class fails to load due to a NameError
-    # it will be added to the failed_classs stack.
-    #
-    # ==== Parameters
-    # klasses<Array[Class]>:: Classes to load.
-    def load_classes_with_requirements(klasses)
-      klasses.uniq!
-
-      while klasses.size > 0
-        # Note size to make sure things are loading
-        size_at_start = klasses.size
-
-        # List of failed classes
-        failed_classes = []
-        # Map classes to exceptions
-        error_map = {}
-
-        klasses.each do |klass|
-          klasses.delete(klass)
-          begin
-            load_file klass
-          rescue NameError => ne
-            error_map[klass] = ne
-            failed_classes.push(klass)
-          end
-        end
-
-        # Keep list of classes unique
-        failed_classes.each { |k| klasses.push(k) unless klasses.include?(k) }
-
-        # Stop processing if nothing loads or if everything has loaded
-        if klasses.size == size_at_start && klasses.size != 0
-          # Write all remaining failed classes and their exceptions to the log
-          error_map.only(*failed_classes).each do |klass, e|
-            Merb.logger.fatal! "Could not load #{klass}:\n\n#{e.message} - (#{e.class})\n\n#{(e.backtrace || []).join("\n")}"
-          end
-          raise LoadError, "Could not load #{failed_classes.inspect} (see log for details)."
-        end
-        break if(klasses.size == size_at_start || klasses.size == 0)
-      end
-    end
-
-  end
-
-end
-</code></pre>
+This bootloader is huge so we omit it's code here.
+Find Merb::BootLoader::LoadClasses in lib/merb-core/bootloader.rb.
 
 
 h2. Templates.
@@ -980,47 +698,10 @@ boot time by Templates bootloader, and if no template reloading needed
 (:reload_templates configuration option set to false), Merb does not go to the
 filesystem at all once server is started.
 
-Bootloader looks simple:
+You can find Merb::BootLoader::Templates in lib/merb-core/bootloader.rb.
 
-Merb::BootLoader::Templates (lib/merb-core/bootloader.rb):
-<pre><code>
-class Merb::BootLoader::Templates < Merb::BootLoader
-  class << self
-
-    # Loads the templates into the Merb::InlineTemplates module.
-    def run
-      template_paths.each do |path|
-        Merb::Template.inline_template(File.open(path))
-      end
-    end
-
-    # ==== Returns
-    # Array[String]:: Template files found.
-    def template_paths
-      extension_glob = "{#{Merb::Template.template_extensions.join(',')}}"
-
-      # This gets all templates set in the controllers template roots
-      # We separate the two maps because most of controllers will have
-      # the same _template_root, so it's silly to be globbing the same
-      # path over and over.
-      controller_view_paths = []
-      Merb::AbstractController._abstract_subclasses.each do |klass|
-        next if (const = Object.full_const_get(klass))._template_root.blank?
-        controller_view_paths += const._template_roots.map { |pair| pair.first }
-      end
-      template_paths = controller_view_paths.uniq.compact.map { |path| Dir["#{path}/**/*.#{extension_glob}"] }
-
-      # This gets the templates that might be created outside controllers
-      # template roots.  eg app/views/shared/*
-      template_paths << Dir["#{Merb.dir_for(:view)}/**/*.#{extension_glob}"] if Merb.dir_for(:view)
-
-      template_paths.flatten.compact.uniq
-    end
-  end
-end
-</code></pre>
-
-The key part of inlining is inline_template that delegates to templating engine.
+The key part of inlining is inline_Merb::BootLoader::Templates#template
+method that delegates to templating engine.
 Here's what it looks like for Erubis:
 
 Merb::Template::Erubis (lib/merb-core/controller/template.rb):
@@ -1229,6 +910,10 @@ class Merb::BootLoader::StartWorkerThread < Merb::BootLoader
 end
 </code></pre>
 
+Keep in mind that when Ruby forks (Merb server uses forks when environment
+supports it), only one, main thread is copied to the child process. This
+means this bootloader is run for every Merb worker after forking.
+
 
 h2. RackUpApplication bootloader.
 
@@ -1269,6 +954,10 @@ Merb::BootLoader::RackUpApplication (merb-core/lib/bootloader.rb):
 end
 </code></pre>
 
+If you want to support some customized deployment environment, make sure you
+understand the code above. Rack is a great piece of software in Ruby web
+development toolchain, and being familiar with it is definitely a plus
+for every developer out there.
 
 h2. ReloadClasses bootloader.
 
@@ -1277,52 +966,10 @@ What the period is? Merb::Config[:reload_time] value. ReloadClasses checks file
 modification time and reloads classes in that file delegating to LoadClasses
 bootloader.
 
-Merb::BootLoader::ReloadClasses (lib/merb-core/bootloader.rb):
+Merb::BootLoader::ReloadClasses lives in lib/merb-core/bootloader.rb.
+It's fairly boring chunk of code so I leave the full source
+code out.
 
-<pre><code>
-class Merb::BootLoader::ReloadClasses < Merb::BootLoader
-
-  class TimedExecutor
-    def self.every(seconds, &block)
-      Thread.abort_on_exception = true
-      Thread.new do
-        loop do
-          sleep( seconds )
-          block.call
-        end
-        Thread.exit
-      end
-    end
-  end
-
-  # Setup the class reloader if it's been specified in config.
-  def self.run
-    return unless Merb::Config[:reload_classes]
-
-    TimedExecutor.every(Merb::Config[:reload_time] || 0.5) do
-      reload
-    end
-    
-  end
-
-  # Reloads all files.
-  def self.reload
-    paths = []
-    Merb.load_paths.each do |path_name, file_info|
-      path, glob = file_info
-      next unless glob
-      paths << Dir[path / glob]
-    end
-
-    paths << Merb.dir_for(:application) if Merb.dir_for(:application) && File.file?(Merb.dir_for(:application))
-
-    paths.flatten.each do |file|
-      next if Merb::BootLoader::LoadClasses::MTIMES[file] && Merb::BootLoader::LoadClasses::MTIMES[file] == File.mtime(file)
-      Merb::BootLoader::LoadClasses.reload(file)
-    end
-  end
-end
-</code></pre>
 
 
 h2. ReloadTemplates bootloader.
@@ -1344,3 +991,9 @@ class Merb::BootLoader::ReloadTemplates < Merb::BootLoader
   end
 end
 </code></pre>
+
+h2. Where to look next.
+
+Once boot is finished, server and Rack adapter code is where Merb
+hacker needs to look next. But don't ask yourself where to find it,
+just move on to the next chapter.
