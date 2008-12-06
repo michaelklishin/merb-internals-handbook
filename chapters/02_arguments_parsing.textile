@@ -1,6 +1,6 @@
 h1. Arguments parsing.
 
-Executable file merb that every Merb user have seen for sure, looks like this:
+The executable file <tt>merb</tt> that every Merb user has seen for sure, looks like this:
 
 <pre><code>
 #!/usr/bin/env ruby
@@ -8,7 +8,7 @@ require "merb-core"
 
 if ARGV[0] && ARGV[0] =~ /^[^-]/
   ARGV.push "-H"
-end 
+end
 
 unless %w[-a --adapter -i --irb-console -r --script-runner].any? { |o| ARGV.index(o) }
   ARGV.push *%w[-a mongrel]
@@ -17,7 +17,7 @@ end
 Merb.start
 </code></pre>
 
-This means that merb uses Mongrel adapter by default and fun starts in Merb.start.
+This means that Merb uses the Mongrel adapter by default and the fun begins in Merb.start.
 What does Merb.start do? 	It parses and sets up application config, then runs boot
 and does rackup.
 
@@ -29,7 +29,7 @@ common operations you expect to see on a Hash-like object to underlying Hash,
 but also has a dozen of default configuration options and means to parse/update
 configuration.
 
-Lets start with default configuration settings:
+Lets start with the default configuration settings:
 
 Merb::Config.defaults (lib/merb-core/config.rb):
 <pre><code>
@@ -54,107 +54,106 @@ def defaults
 end
 </code></pre>
 
-Although most of these options are well named and explain their purpose but they are not
-complete so let's be explicit and briefly describe each of options Merb core knows
+Although, most of these options are well named and explain their purpose, they are not
+complete so let's be explicit and briefly describe each of the options Merb core knows
 about and uses:
 
 Server & environment options:
 
- * _adapter_ is Rack adapter (more on Rack machinery later) and can be one of
+ * _adapter_ is the Rack adapter (more on Rack machinery later) and can be one of
    mongrel, thin, ebb, swiftiplied_mongrel, evented_mongrel, webrick or irb
-   (Merb console). Usually passed from command line or in spec helper.
+   (Merb console). Usually passed from the command line or in spec helper.
 
- * _app_ is a Rack application used by Merb Rack adapter.	Not supposed to be
+ * _app_ is a Rack application used by the Merb Rack adapter.	It's not supposed to be
    set manually.
 
- * _cluster_ is a number of Merb instances in a cluster you want to run.	 
+ * _cluster_ is a number of Merb instances in a cluster that you want to run.
 
- * _daemonize_ tells Merb to detach from tty and operate in child process.
+ * _daemonize_ tells Merb to detach from tty and operate in a child process.
 
- * _deferred\_actions_ is an array of symbols that specify which actions in the
+ * _deferred_actions_ is an array of symbols that specify which actions in the
    application take a long time to execute and should be deferred by
    event-driven servers (see below).
 
- * _disabled\_components_ is a list of framework components that you can exclude
+ * _disabled_components_ is a list of framework components that you can exclude
    from being loaded to save some memory on stuff your application does not use.
- 
- * _environment_ is environment you start Merb application in, usually one of
-   development, testing, production but you can add any environment you want
+
+ * _environment_ is the environment you start your Merb application in. Usually one of
+   development, testing, or production, but you can add any environment you want
    like stage1, stage2, prerelease and hostile_martian_environment.
 
- * _exception\_details_ is a boolean telling Merb if it should show detailed
-   exception backtrace in the browser when the trouble strikes.
+ * _exception_details_ is a boolean telling Merb if it should show a detailed
+   exception backtrace in the browser when trouble strikes.
 
- * _framework_ is a Hash that holds application components layout.
-	 
- * _group_ is an OS group Merb application runs from.	 
-	 
- * _host_ and port are host and port Ruby server runs on.
+ * _framework_ is a Hash that holds the application components layout.
 
- * _ignore\_tampered\_cookies_ indicates Merb to not raise exception when cookie integrity check fails.
-	 
- * _init\_file_ is initialization file path.
+ * _group_ is an OS group the Merb application runs from.
 
- * _log\_auto\_flush_ specifies if logger flushes write buffer immediately (value is true) or once
+ * _host_ and _port_ are the host and port Ruby server runs on.
+
+ * _ignore_tampered_cookies_ tells Merb to not raise an exception when the cookie integrity check fails.
+
+ * _init_file_ is the initialization file path.
+
+ * _log_auto_flush_ specifies if the logger flushes write buffer immediately (default value is true) or once
    in a while. FIXME: when exactly?
 
- * _log\_delimiter_ lets you change log records delimiter (not used that often).
+ * _log_delimiter_ lets you change the log record delimiter (not used that often).
 
- * _log\_file_ is a path to file Merb logger writes to.
+ * _log_file_ is a path to a file which Merb logger writes to.
 
- * _log\_level_ sets logger level, from :info to :fatal. Defaults to :error for production environment.
+ * _log_level_ sets the logger level, from :info to :fatal. Defaults to :error for production environment.
 
- * _memory\_session\_ttl_ is a TTL (time to live) period for memory session storage.
+ * _memory_session_ttl_ is a TTL (time to live) period for memory session storage.
 
- * _merb\_root_ is a directory that considered Merb application's root.
+ * _merb_root_ is a directory that is considered Merb application's root.
 
- * _path\_prefix_ is global path application uses. This is stripped out by Rack before routing the request.
+ * _path_prefix_ is a global path the application uses. This is stripped out by Rack before routing the request.
 
- * _pid\_file_ specifies location of pid file.
+ * _pid_file_ specifies the location of the [PID](http://en.wikipedia.org/wiki/Process_identifier) file.
 
  * _rackup_ is a rackup file path. By default Merb loads rack.rb in config directory.
 
- * _reload\_classes_ specifies if Merb reloads application classes on each request or caches them.
+ * _reload_classes_ specifies if Merb should reload application classes on each request or cache them.
 
- * _reload\_templates_ supposed to let you avoid templates inlining and reload them on every request. NoOp at the moment of writing.
+ * _reload_templates_ is supposed to let you avoid templates inlining and reload them on every request. NoOp at the moment of writing.
 
- * _reload\_time_ is a period of class reload, defaults to 0.5 second.
+ * _reload_time_ is a period of class reload, defaults to 0.5 second.
 
- * _router\_file_ is name of the router file, default is 'router.rb'.	 
+ * _router_file_ is name of the router file, default is 'router.rb'.
 
- * _default\_cookie\_domain_ is a domain used for cookies if no explicit domain specified.
+ * _default_cookie_domain_ is a domain used for cookies, if no explicit domain specified.
 
- * _session\_expiry_ is session expiration period, defaults to 2 weeks.
+ * _session_expiry_ is the session expiration period, defaults to 2 weeks.
 
- * _session\_id\_key_ is session identifier.
+ * _session_id_key_ is the session identifier.
 
- * _session\_secret\_key_ is session identifier salt.
+ * _session_secret_key_ is the session identifier salt.
 
- * _session\_store_ is default session storage, one of memcache, memory, datamapper, sequel or activerecord (registered by plugins).
+ * _session_store_ is the default session storage; one of memcache, memory, datamapper, sequel or activerecord (registered by plugins).
 
- * _session\_stores_ is array of additional session stores in case you really need them. 
-	 
+ * _session_stores_ is an array of additional session stores, in case you really need them.
+
  * _testing_ is a boolean flag indicating if Merb runs in testing environment (for instance, on test suite run).
 
- * _use\_mutex_ specifies if Merb should use mutex lock for action dispatch. If you use not threadsafe library (like ActiveRecord), you probably want to turn it on. If all of your application code is thread-safe, feel free to turn it off and have a performance gain.
+ * _use_mutex_ specifies if Merb should use mutex lock for action dispatch. If you do not use the threadsafe library (like ActiveRecord), you probably want to turn it on. If all of your application code is thread-safe, feel free to turn it off and have a performance gain.
 
  * _user_ is an OS user Merb application runs from.
 
- * _verbose_ specifies if extra output should be printed when Merb starts server and boots.
+ * _verbose_ specifies if extra output should be printed when Merb starts the server and boots.
 
-Note that by default Merb uses current working directory and mutex lock is ON by default.
+Note that by default, Merb uses the current working directory and mutex lock is ON by default.
 Logger does not flush automatically unless you (kindly) ask Merb about it.
 
 FIXME: when it's flushed, on what events?
 
 If you noted that environment and testing options overlap, you probably wonder
 which takes precedence. The answer is testing. If Merb sees that testing or
-$TESTING global variable is set to true, it resets environment to "test".
+the $TESTING global variable is set to true, it resets environment to "test".
 
 Here is how it looks like in the source:
 
 Merb.testing? (lib/merb-core.rb):
-
 <pre><code>
 # ==== Returns
 # Boolean:: True if Merb environment is testing for instance,
@@ -170,20 +169,20 @@ Merb.environment ||= ENV['MERB_ENV'] || Merb::Config[:environment] || (Merb.test
 
 Two more things that probably need some explanation are disabled components and
 deferred actions. Disabled components are parts or dependencies of Merb that you
-can leave out: like native JSON gem (for instance, if your Merb application does
+can leave out: like the native JSON gem (for instance, if your Merb application does
 not use JSON at all, it makes no sense to waste memory). Actually the only component
 in merb-core that can be left out at the moment of writing is JSON gem, set disabled_components to [:json]
 if you do not want Merb to load it.
 
-Deferred actions is a way to specify which actions in the application take long time to execute and should be
-deferred: the idea is that event-driven webservers (Thin, Ebb) that are usually faster than
-Mongrel will spawn a thread to run deferred actions so event loop is not stopped
-and server can continue serving requests. Usually very useful for file upload actions.
+Deferred actions is a way to specify which actions in the application take a long time to execute and should be
+deferred. The idea is that event-driven web servers (Thin, Ebb) that are usually faster than
+Mongrel will spawn a thread to run deferred actions so the event loop is not stopped
+and the server can continue serving requests. Usually very useful for file upload actions.
 
-Verbose options makes Merb print to STDOUT extra information on what's going on.
-If you want really really verbose information (for instance, want to know what compiled
-routes look like), set $DEBUG variable to true in config file.
+Verbose options makes Merb print to STDOUT extra information about what's going on.
+If you want really, really verbose information (for instance, want to know what compiled
+routes look like), set the $DEBUG variable to true in the config file.
 
-Merb::Config.parse_args parses arguments and merges them into default configuration
+Merb::Config.parse_args parses arguments and merges them into the default configuration
 using Merb::Config.setup. Ruby has a good library for parsing command line arguments
 called OptParse and that's what parse_args uses under the covers.
