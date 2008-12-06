@@ -1,31 +1,31 @@
 h1. Start.
 
-There are couple of open source Merb book attempts but they all explain
-how to use Merb. As occasional Merb contributor I always wanted a book that
-really saves my time when it comes to understanding how things work inside
-of the framework. Merb is meant to be highly hackable after all.
+There are a couple of open source Merb book attempts, but they all explain
+how to use Merb. As an occasional Merb contributor, I always wanted a book that
+really saves me time when it comes to understanding how things work inside
+of the framework. Merb is meant to be highly hackable, after all.
 
 So I decided to write this little book about Merb internals.
 
 h2. Foreword.
 
-* Hacker's framework needs hacker's handbook.
-	 
-h2. What happens when you run merb executable.
+* Hacker's framework needs a hacker's handbook.
+
+h2. What happens when you run the <tt>merb</tt> executable.
 
 * Start.
 * Arguments parsing.
 * Server start.
 * Framework boot.
 
-h2. Then request comes in.
+h2. When a request comes in.
 
 * Merb on Rack.
 * Rackup.
 * Dispatch.
 * Filters
 * Sessions.
-* MIME formats and what's behind "provides API".
+* MIME formats and what's behind the "provides" API.
 * Rendering overview.
 * Template inlining.
 * Router internals.
@@ -33,15 +33,15 @@ h2. Then request comes in.
 * Plugins.
 
 h2. Plugins.
-	 
-** DataMapper plugin.
-** Sequel plugin.
-** ActiveRecord plugin.
-** Slices.
-** Merb action-args.
-** Merb auth.
-** Merb Haml plugin.
-** Merb parts.
+
+* DataMapper
+* Sequel
+* ActiveRecord
+* Slices
+* Merb action-args
+* Merb auth
+* Merb Haml
+* Merb parts
 
 h2. Development.
 
